@@ -7,15 +7,15 @@ import (
 	"github.com/joho/godotenv"
 )
 
-type config struct{
+type Config struct{
 	DatabaseURL		string
 	DatabaseURL_P	string
 }
 
-func load_env()(*config, error){
+func load_env()(*Config, error){
 	_ = godotenv.Load()
 
-	cgf := &config{
+	cgf := &Config{
 		DatabaseURL: os.Getenv("DATABASE_URL"),
 		DatabaseURL_P: os.Getenv("DATABASE_URL_P"),
 	}
