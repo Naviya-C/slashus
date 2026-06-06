@@ -7,10 +7,9 @@ import (
 	"gorm.io/gorm"
 )
 
-func connect(cfg *config.Config)(*gorm.DB, error){
+func Connect(cfg *config.Config)(*gorm.DB, error){
 	return gorm.Open(
 		postgres.Open(cfg.DatabaseURL_P),
 		&gorm.Config{},
 	)
 }
-

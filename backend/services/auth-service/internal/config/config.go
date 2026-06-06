@@ -12,7 +12,7 @@ type Config struct{
 	DatabaseURL_P	string
 }
 
-func load_env()(*Config, error){
+func LoadEnv()(*Config, error){
 	_ = godotenv.Load()
 
 	cgf := &Config{
