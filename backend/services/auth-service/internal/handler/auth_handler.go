@@ -2,6 +2,7 @@ package handler
 
 import (
 	"auth-service/internal/usecase"
+	dto "auth-service/internal/transport/http"
 	"encoding/json"
 	"net/http"
 )
@@ -26,7 +27,7 @@ func(h *AuthHandler) Register(
 	r *http.Request,
 ){
 
-	var req httpdto.RegisterRequest
+	var req dto.RegisterRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil{
 		http.Error(w, "Invalid Request", http.StatusBadRequest)
@@ -37,11 +38,12 @@ func(h *AuthHandler) Register(
 		req.FirstName,
 		req.LastName,
 		req.Email,
-		req.PasswordHash,
+		req.Password,
 	)
 
 	if err != nil{
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	w.WriteHeader(http.StatusCreated)
