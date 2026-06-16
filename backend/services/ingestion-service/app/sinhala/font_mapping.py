@@ -31,13 +31,13 @@ FONT_TO_MAPPING: dict[str, str] = {
 
 
 def _normalise_font_name(name: str) -> str:
-    return name.lower().replace(" ", ".").replace("-", ".").replace("_", ".")
+    return name.lower().replace(" ", "_").replace("-", "_").replace(".", "_")
 
 def _resolve_mapping(normalised_font_name: str) -> str:
     for key in FONT_TO_MAPPING:
-        if key.replace("_", ".") in normalised_font_name:
+        if key in normalised_font_name:
             return FONT_TO_MAPPING[key]
-    return "fm_abhaya"
+    return "fm_abhaya" # Should be not detected but for now it keep as it is.
 
 
 def has_sinhala_unicode(text: str) -> bool:
