@@ -1,5 +1,8 @@
 import pymupdf
 import os
+"""
+Later use class for document open one time causue open document 2 times heavy.
+"""
 
 def page_has_images(pdf_path: str, page_number: int) -> bool:
     """Quick check — does this page contain any embedded images?"""
