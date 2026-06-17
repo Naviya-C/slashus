@@ -1,15 +1,12 @@
 import pymupdf
 
 from sinhala.converter import SinhalaTextConverter
+from models.text_extract import PageContext
 
-def get_page_text_blocks(
-    pdf_path: str, 
-    page_number: int, 
-    converter: SinhalaTextConverter
-    ) -> list[dict]:
+def get_page_text_blocks(context: PageContext) -> list[dict]:
     
-    doc = pymupdf.open(pdf_path)
-    page = doc[page_number]
+    doc = pymupdf.open(context.pdf_path)
+    page = doc[context.page_number]
     blocks = page.get_text("dict")["blocks"]
     
     doc.close()
@@ -26,7 +23,7 @@ def get_page_text_blocks(
         for line in block.get("lines", []):
             for span in line.get("spans", []):
                 raw = span.get("text", "")
-                converted = converter.convert(raw)
+                converted = context.converter.convert(raw)
                 if converted != raw:
                     was_converted = True
                 lines_text.append(converted)
