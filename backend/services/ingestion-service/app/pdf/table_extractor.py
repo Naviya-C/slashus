@@ -1,4 +1,4 @@
-from models.text_extract import PageContext
+from app.models.text_extract import PageContext
 
 import pdfplumber
 
