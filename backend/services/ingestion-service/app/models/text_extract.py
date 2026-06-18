@@ -1,7 +1,5 @@
-# models/page_context.py
-
 from dataclasses import dataclass
-from sinhala.converter import SinhalaTextConverter
+from app.sinhala.converter import SinhalaTextConverter
 
 @dataclass
 class PageContext:
