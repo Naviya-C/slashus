@@ -1,6 +1,6 @@
-from models.block import Block
-from models.metadata import BlockMetadata
-from models.assemble import Assemble
+from app.models.block import Block
+from app.models.metadata import BlockMetadata
+from app.models.assemble import Assemble
 
 def assemble_blocks(context: Assemble) -> list[Block]:
     ctx = context.page_analysis.get("page_heading_context", {})
