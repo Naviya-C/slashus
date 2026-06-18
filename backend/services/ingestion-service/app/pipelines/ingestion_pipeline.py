@@ -6,20 +6,22 @@ import json
 import anthropic
 
 
-from models.block import Block
+from app.models.block import Block
 
-from pdf.font_detector import detect_legacy_font
-from pdf.image_extractor import page_has_images, extract_images_on_page
-from pdf.text_extractor import get_page_text_blocks
-from pdf.table_extractor import extract_tables_on_page
-from pdf.page_renderer import pdf_page_to_base64_image
+from app.pdf.font_detector import detect_legacy_font
+from app.pdf.image_extractor import page_has_images, extract_images_on_page
+from app.pdf.text_extractor import get_page_text_blocks
+from app.pdf.table_extractor import extract_tables_on_page
+from app.pdf.page_renderer import pdf_page_to_base64_image
 
-from sinhala.converter import SinhalaTextConverter
+from app.sinhala.converter import SinhalaTextConverter
 
-from heading.heuristic import classify_page_heuristic
-from heading.assembler import assemble_blocks
-from heading.claude_analyzer import analyse_page_with_claude
+from app.heading.heuristic import classify_page_heuristic
+from app.heading.assembler import assemble_blocks
+from app.heading.claude_analyzer import analyse_page_with_claude
 
+from app.models.text_extract import PageContext
+from app.models.assemble import Assemble
 
 
 def process_pdf(
@@ -107,9 +109,15 @@ def process_pdf(
         has_img = page_has_images(pdf_path, page_idx)
         mode = "claude-vision" if has_img else "heuristic"
         print(f"  ▶ Page {page_idx + 1}/{ep}  [{mode}]", end=" ... ", flush=True)
+        
+        context_block = PageContext(
+            pdf_path,
+            page_idx,
+            converter
+        )
 
-        text_blocks = get_page_text_blocks(pdf_path, page_idx, converter)
-        page_tables = extract_tables_on_page(pdf_path, page_idx, converter)
+        text_blocks = get_page_text_blocks(context_block)
+        page_tables = extract_tables_on_page(context_block)
         page_images = extract_images_on_page(pdf_path, page_idx, image_output_dir)
 
         if has_img:
@@ -122,16 +130,23 @@ def process_pdf(
                 api_calls += 1
             except Exception as e:
                 print(f"\n     ⚠ Claude error: {e} — falling back to heuristic")
-                page_analysis = classify_page_heuristic(text_blocks, page_tables, page_images)
+                page_analysis = classify_page_heuristic(text_blocks, page_tables)
         else:
             # ── Pages with NO images → heuristic only, zero API cost ──
-            page_analysis = classify_page_heuristic(text_blocks, page_tables, page_images)
-
-        page_blocks = assemble_blocks(
-            page_analysis, page_tables, page_images,
-            page_idx, block_counter, heading_context,
-            encoding_converted=is_legacy,
+            
+            page_analysis = classify_page_heuristic(text_blocks, page_tables)
+            
+        context_page_block = Assemble(
+            page_analysis,
+            page_tables,
+            page_images,
+            page_idx,
+            block_counter,
+            heading_context,
+            encoding_converted = is_legacy
         )
+
+        page_blocks = assemble_blocks(context_page_block)
         all_blocks.extend(page_blocks)
         print(f"✓  ({len(page_blocks)} blocks)")
 
@@ -176,3 +191,15 @@ def process_pdf(
           f"({'only on image pages' if api_calls else 'none — no images found'})")
     return document
 
+
+
+if __name__ == "__main__":
+    
+    process_pdf(
+    "/home/naviya-c/Downloads/grade-10-sinhala.pdf",
+    "/home/naviya-c/Downloads/output.json",
+    "/home/naviya-c/Downloads" ,
+    start_page = 15,
+    end_page = 25,
+    ) 
+    
