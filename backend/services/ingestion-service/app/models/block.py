@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from metadata import BlockMetadata
+from app.models.metadata import BlockMetadata
 
 @dataclass
 class Block:
