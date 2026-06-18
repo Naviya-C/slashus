@@ -1,6 +1,6 @@
 import pymupdf, re
 
-from sinhala.font_mapping import LEGACY_FONT_PATTERNS, _normalise_font_name, _resolve_mapping
+from app.sinhala.font_mapping import LEGACY_FONT_PATTERNS, _normalise_font_name, _resolve_mapping
 
 def detect_legacy_font(pdf_path: str) -> tuple[bool, str]:
     doc = pymupdf.open(pdf_path)

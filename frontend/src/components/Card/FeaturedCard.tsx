@@ -23,9 +23,9 @@ function FeatureCard({
             <div className="w-full md:w-1/2">
                 <img src={image} />
             </div>
-            <div className="w-full md:w-1/2 px-10 pb-10  rounded-4xl shadow-md">
-                <h2 className="text-2xl font-bold flex justify-center items-center">{title}</h2>
-                <p className="mt-4 text-base text-gray-600 pt-2">{description}</p>
+            <div className="w-full md:w-1/2 px-15 pb-10 h-120 rounded-4xl shadow-md">
+                <h2 className="text-3xl font-bold flex justify-center items-center">{title}</h2>
+                <p className="mt-4 text-lg text-gray-600 pt-2">{description}</p>
             </div>
         </div>
     );

@@ -1,7 +1,7 @@
 import pymupdf
 
-from sinhala.converter import SinhalaTextConverter
-from models.text_extract import PageContext
+from app.sinhala.converter import SinhalaTextConverter
+from app.models.text_extract import PageContext
 
 def get_page_text_blocks(context: PageContext) -> list[dict]:
     
