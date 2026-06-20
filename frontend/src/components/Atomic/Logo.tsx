@@ -3,11 +3,11 @@ function Logo(){
         <div className="flex items-center gap-2">
             <img 
                 src="src/assets/logo_black.svg" 
-                alt="SLUSHUS LOGO" 
+                alt="SLASHUS LOGO" 
                 className="h-12"
             />
             <h3 className="text-xl font-bold">
-                SLUSHUS
+                SLASHUS
             </h3>
         </div>
     );
