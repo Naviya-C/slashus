@@ -1,18 +1,17 @@
-from typing import Optional
 from pathlib import Path
+
 import os
 import pymupdf
 import json
-import anthropic
+import anthropic 
 
-
-from app.models.block import Block
 
 from app.pdf.font_detector import detect_legacy_font
 from app.pdf.image_extractor import page_has_images, extract_images_on_page
 from app.pdf.text_extractor import get_page_text_blocks
 from app.pdf.table_extractor import extract_tables_on_page
 from app.pdf.page_renderer import pdf_page_to_base64_image
+from app.pdf.check_box_overlap import intersects
 
 from app.sinhala.converter import SinhalaTextConverter
 
@@ -22,21 +21,23 @@ from app.heading.claude_analyzer import analyse_page_with_claude
 
 from app.models.text_extract import PageContext
 from app.models.assemble import Assemble
+from app.models.block import Block
+from app.models.processPDF import ProcessPDF
+
+from app.rag.chunking.chunker import chunking
+from app.rag.embedding.embedder import embed_texts
+from app.rag.vectorDB.vector_store import (
+    create_collection,
+    create_payload_indexes,
+    upload_chunks,
+)
 
 
-def process_pdf(
-    pdf_path: str,
-    output_json_path: str,
-    image_output_dir: Optional[str] = None,
-    start_page: int = 0,
-    end_page: Optional[int] = None,
-    api_key: Optional[str] = None,
-    force_legacy_mapping: Optional[str] = None,
-) -> dict:
+def process_pdf(context: ProcessPDF) -> dict:
     """
     Full ingestion pipeline.
 
-    Args:
+    context Args:
         pdf_path:             Path to input PDF.
         output_json_path:     Where to write the output JSON.
         image_output_dir:     Directory for extracted images.
@@ -47,55 +48,63 @@ def process_pdf(
                               Only needed if the PDF contains images.
         force_legacy_mapping: Override font auto-detection (e.g. 'fm_abhaya').
     """
-    pdf_path = str(Path(pdf_path).resolve())
+    
+    # ── Paths extracting ──────────────────────────────────-----
+    pdf_path = str(Path(context.pdf_path).resolve())
+    pdf_name = Path(pdf_path).stem
     if not os.path.exists(pdf_path):
         raise FileNotFoundError(f"PDF not found: {pdf_path}")
-
+    
+    image_output_dir = str(Path(context.image_output_dir).resolve())
     if image_output_dir is None:
-        image_output_dir = str(Path(output_json_path).parent / "extracted_images")
-    os.makedirs(image_output_dir, exist_ok=True)
+        image_output_dir = str(Path(context.output_json_path).parent / f"extracted_images{pdf_name}")
+        os.makedirs(image_output_dir, exist_ok = True)
 
     # ── Legacy font detection ──────────────────────────────────
-    if force_legacy_mapping:
-        is_legacy, mapping = True, force_legacy_mapping
-        print(f"  🔤 Forced legacy mapping: {mapping}")
+    if context.force_legacy_mapping:
+        is_legacy, mapping = True, context.force_legacy_mapping
+        print(f"🔤 Forced legacy mapping: {mapping}")
     else:
-        print("  🔍 Scanning fonts for legacy Sinhala encoding...")
+        print("🔍 Scanning fonts for legacy Sinhala encoding...")
         is_legacy, mapping = detect_legacy_font(pdf_path)
         if is_legacy:
-            print(f"  ✅ Legacy font detected → mapping: {mapping}")
+            print(f"✅ Legacy font detected → mapping: {mapping}")
         else:
-            print("  ✅ Unicode font — no conversion needed")
+            print("✅ Unicode font — no conversion needed")
 
     converter = SinhalaTextConverter(is_legacy, mapping)
 
     # ── Page range ────────────────────────────────────────────
+    """
+    This is for temporary until system able to pass first few pages(e.g: table of content) 
+    """
+    
+    
     doc = pymupdf.open(pdf_path)
     total_pages = len(doc)
     doc.close()
 
     # Clamp to valid range
-    start_page = max(0, start_page)
-    ep = min(end_page if end_page is not None else total_pages, total_pages)
+    start_page = max(0, context.start_page)
+    ep = min(context.end_page if context.end_page is not None else total_pages, total_pages)
 
     print(f"\n📄 {Path(pdf_path).name}")
     print(f"   Total pages : {total_pages}")
     print(f"   Processing  : pages {start_page + 1} → {ep}")
 
-    # ── Lazy Anthropic client — only created if any page has images ──
+    # ── Anthropic client — only start if any page has images ──
     _anthropic_client = None
 
     def get_client():
         nonlocal _anthropic_client
         if _anthropic_client is None:
             import anthropic as _anthropic
-            key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+            key = context.api_key or os.environ.get("ANTHROPIC_API_KEY")
             if not key:
                 raise ValueError(
                     "This PDF contains images. Set ANTHROPIC_API_KEY or pass --api-key "
-                    "so Claude Vision can describe them."
                 )
-            _anthropic_client = _anthropic.Anthropic(api_key=key)
+            _anthropic_client = _anthropic.Anthropic(api_key = key)
             print("🤖 Anthropic client initialised (page has images)")
         return _anthropic_client
 
@@ -119,9 +128,55 @@ def process_pdf(
         text_blocks = get_page_text_blocks(context_block)
         page_tables = extract_tables_on_page(context_block)
         page_images = extract_images_on_page(pdf_path, page_idx, image_output_dir)
+        
+        """
+        text_blocks and page_table both extract table different way, detect the tables inside the textblock and remove from text_blocks
+        cause page_tables already extract it.
+        Avoid the redundent table extraction.
+        """
+        
+        # Calculate font sizes once
+        all_sizes = [
+            tb["font_size"]
+            for tb in text_blocks
+            if tb["font_size"] > 0
+        ]
+
+        max_font_size = max(all_sizes) if all_sizes else 0
+
+        filtered_blocks = []
+
+        for block in text_blocks:
+
+            # Never remove large text blocks
+            if block["font_size"] >= max_font_size * 0.8:
+                filtered_blocks.append(block)
+                continue
+
+            inside_table = False
+
+            for table in page_tables:
+                if intersects(block["bbox"], table["bbox"]):
+                    inside_table = True
+                    break
+
+            if not inside_table:
+                filtered_blocks.append(block)
+
+        text_blocks = filtered_blocks
+        
+        ### ==============Debug================ ###
+        """
+        for tb in text_blocks:
+            print(
+                f"FONT={tb['font_size']} "
+                f"TEXT={tb['text'][:100]}"
+            )
+        """
+        # ========================================
 
         if has_img:
-            # ── Pages WITH images → Claude Vision ─────────────
+            # ── Pages WITH images─────────────
             page_image_b64 = pdf_page_to_base64_image(pdf_path, page_idx)
             try:
                 page_analysis = analyse_page_with_claude(
@@ -181,25 +236,83 @@ def process_pdf(
             for b in all_blocks
         ],
     }
+    
+    # ======= Chunking ==============================
+    
+    print("\n📦 Creating chunks...")
+    chunks = chunking(document)
+    print(f"   Chunks: {len(chunks)}")
+    
+    print("🧠 Generating embeddings...")
+    
+    
+    # =================== Embedding ================================
 
-    with open(output_json_path, "w", encoding="utf-8") as f:
-        json.dump(document, f, ensure_ascii=False, indent=2)
+    texts = [
+        chunk["text"]
+        for chunk in chunks
+    ]
 
-    print(f"\n✅ Done → {output_json_path}")
+    vectors = embed_texts(texts)
+
+    print(f"Embeddings: {len(vectors)}")
+    
+    
+    # ========= Create Qdrant Collection =============================
+    
+    print("🗄️ Preparing Qdrant collection...")
+
+    create_collection()
+    create_payload_indexes()
+    
+    # =============== Uploading Chunks to Qdrant ======================
+    
+    print("⬆️ Uploading vectors...")
+
+    upload_chunks(
+        chunks,
+        vectors,
+    )
+
+    print("✅ Upload complete")
+    
+    # ================= Finish uploading ==============================
+    
+    print(f"\n✅ Done")
+    print(f"   Blocks   : {len(all_blocks)}")
+    print(f"   Chunks   : {len(chunks)}")
+    print(f"   Vectors  : {len(vectors)}")
+    print(f"   API calls: {api_calls}")
+
+    return {
+        "source_file": Path(pdf_path).name,
+        "blocks_extracted": len(all_blocks),
+        "chunks_created": len(chunks),
+        "vectors_uploaded": len(vectors),
+    }
+
+    """
+    with open(context.output_json_path, "w", encoding="utf-8") as f:
+    json.dump(document, f, ensure_ascii=False, indent=2)
+
+    print(f"\n✅ Done → {context.output_json_path}")
     print(f"   Blocks extracted : {len(all_blocks)}")
     print(f"   API calls made   : {api_calls}  "
           f"({'only on image pages' if api_calls else 'none — no images found'})")
     return document
+    """
 
 
 
 if __name__ == "__main__":
     
-    process_pdf(
-    "/home/naviya-c/Downloads/grade-10-sinhala.pdf",
-    "/home/naviya-c/Downloads/output.json",
-    "/home/naviya-c/Downloads" ,
-    start_page = 15,
-    end_page = 25,
-    ) 
+    context = ProcessPDF(
+        "/home/naviya-c/Downloads/grade-10-sinhala.pdf",
+        "/home/naviya-c/Downloads/output.json",
+        "/home/naviya-c/Downloads" ,
+        start_page = 10,
+        end_page = 15,
+    )
+    
+    process_pdf(context) 
     
