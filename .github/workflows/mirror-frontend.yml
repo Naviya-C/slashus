@@ -17,8 +17,8 @@ jobs:
 
       - name: Push frontend to mirror repo
         run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "github-actions@github.com"
+          git config --global user.name "Naviya-C-github-action"
+          git config --global user.email "naviyac491@gmail.com"
 
           git clone https://x-access-token:${{ secrets.SLASHUS_PAT_SECRET }}@github.com/Naviya-C/slashus-frontend.git mirror
 
