@@ -22,7 +22,7 @@ jobs:
 
           git clone https://x-access-token:${{ secrets.SLASHUS_PAT_SECRET }}@github.com/Naviya-C/slashus-frontend.git mirror
 
-          rsync -av --delete frontend/ mirror/
+          rsync -av --delete --exclude='.git/' frontend/ mirror/
 
           cd mirror
           git add .
