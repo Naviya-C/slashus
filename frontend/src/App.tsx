@@ -1,5 +1,5 @@
-import { Home } from 'lucide-react'
 import './App.css'
+import Home from './pages/Home'
 
 function App() {
 
@@ -8,4 +8,4 @@ function App() {
   )
 }
 
-export default App
+export default App;
