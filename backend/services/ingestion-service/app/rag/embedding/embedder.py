@@ -10,7 +10,7 @@ def embed_texts(texts, batch_size=100):
     for i in range(0, len(texts), batch_size):
         batch = texts[i:i + batch_size]
 
-        response = client.models.embed_content(
+        response = client.models.embed_content( 
             model="gemini-embedding-001",
             contents=batch
         )

@@ -1,12 +1,11 @@
 import pymupdf
 
-from app.sinhala.converter import SinhalaTextConverter
 from app.models.text_extract import PageContext
 
 def get_page_text_blocks(context: PageContext) -> list[dict]:
     
     doc = pymupdf.open(context.pdf_path)
-    page = doc[context.page_number]
+    page = doc[context.page_number] 
     blocks = page.get_text("dict")["blocks"]
     
     doc.close()

@@ -1,23 +1,35 @@
 from typing import Optional
 
-def _heading_level(font_size: float, all_sizes: list[float]) -> Optional[int]:
-    """
-    This function identify the heading and pass values:
-        1 -> H1(Title)
-        2 -> H2(Sub-Title)
-        3 -> H3(Sub-subtitle)
-        None -> Paragraph
-    """
-    
+def _heading_level(text: str, font_size: float, all_sizes: list[float]):
     if not all_sizes:
         return None
-    body = sorted(all_sizes)[len(all_sizes) // 2]
-    if font_size >= body * 1.6:
-        return 1
-    elif font_size >= body * 1.3:
-        return 2
-    elif font_size >= body * 1.1:
-        return 3
+
+    body = sorted(all_sizes)[len(all_sizes)//2]
+
+    text = text.strip()
+
+    # Short text gets special treatment
+    if len(text) <= 30:
+
+        if font_size >= body * 1.6:
+            return 1
+
+        elif font_size >= body * 1.15:
+            return 2
+
+        elif font_size >= body * 1.05:
+            return 3
+
+    else:
+        if font_size >= body * 1.6:
+            return 1
+
+        elif font_size >= body * 1.3:
+            return 2
+
+        elif font_size >= body * 1.2:
+            return 3
+
     return None
 
 
@@ -38,7 +50,7 @@ def classify_page_heuristic(
         })
 
     for tb in text_blocks:
-        level = _heading_level(tb["font_size"], all_sizes)
+        level = _heading_level(tb["text"], tb["font_size"], all_sizes)
         if level is not None:
             text = tb["text"].strip()
             if level == 1:
@@ -62,3 +74,4 @@ def classify_page_heuristic(
             })
 
     return {"page_heading_context": heading_ctx, "blocks": blocks_out}
+
