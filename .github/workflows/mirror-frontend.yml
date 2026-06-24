@@ -1,0 +1,23 @@
+name: Mirror SLASHUS Frontend
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'frontend/**'
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Push frontend to frontend repo
+        uses: xt0rted/push-subdirectories-action@v1
+        with:
+          git_token: ${{ secrets.SLASHUS_PAT_SECRET }}
+          repo: https://github.com/Naviya-C/slashus-frontend.git
+          directory: frontend
+          branch: main
