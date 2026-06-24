@@ -1,8 +1,11 @@
+import logo from '../../assets/logo_black.svg'
+
+
 function Logo(){
     return(
         <div className="flex items-center gap-2">
             <img 
-                src="src/assets/logo_black.svg" 
+                src = {logo} 
                 alt="SLASHUS LOGO" 
                 className="h-12"
             />
