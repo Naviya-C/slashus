@@ -6,7 +6,7 @@ def detect_legacy_font(pdf_path: str) -> tuple[bool, str]:
     doc = pymupdf.open(pdf_path)
     for page in doc:
         for block in page.get_text("dict")["blocks"]:
-            if block.get("type") != 0:
+            if block.get("type") != 0: # 0 means images 1 means paragraph
                 continue
             for line in block.get("lines", []):
                 for span in line.get("spans", []):
@@ -16,4 +16,4 @@ def detect_legacy_font(pdf_path: str) -> tuple[bool, str]:
                             doc.close()
                             return True, _resolve_mapping(font_name)
     doc.close()
-    return False, ""
+    return False, " "
