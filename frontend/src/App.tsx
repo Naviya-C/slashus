@@ -1,10 +1,12 @@
-import { Home } from 'lucide-react'
 import './App.css'
+//import SignUp from './pages/SignUp'
+import LogIn from './pages/LogIn'
 
 function App() {
 
   return (
-    <Home />
+    //<SignUp />
+    <LogIn />
   )
 }
 
