@@ -12,12 +12,25 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout main repo
+        uses: actions/checkout@v4
 
-      - name: Push frontend to frontend repo
-        uses: xt0rted/push-subdirectories-action@v1
-        with:
-          git_token: ${{ secrets.SLASHUS_PAT_SECRET }}
-          repo: https://github.com/Naviya-C/slashus-frontend.git
-          directory: frontend
-          branch: main
+      - name: Push frontend to mirror repo
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+
+          git clone https://x-access-token:${{ secrets.SLASHUS_PAT_SECRET }}@github.com/Naviya-C/slashus-frontend.git mirror
+
+          rsync -av --delete frontend/ mirror/
+
+          cd mirror
+          git add .
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          git commit -m "Mirror frontend from monorepo"
+          git push origin main
