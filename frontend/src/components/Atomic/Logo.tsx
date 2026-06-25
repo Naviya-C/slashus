@@ -7,10 +7,10 @@ function Logo(){
             <img 
                 src = {logo} 
                 alt="SLASHUS LOGO" 
-                className="h-12"
+                className="h-12 rounded-xl"
             />
             <h3 className="text-xl font-bold">
-                SLASHUS
+                SLASH<span className = 'text-blue-500'>US</span>
             </h3>
         </div>
     );
