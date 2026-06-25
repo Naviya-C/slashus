@@ -8,21 +8,54 @@ export default function FeatureItem({
   feature,
 }: Props) {
   return (
-    <div className="flex gap-5">
+    <div className="flex items-start gap-4 md:gap-5">
+      {/* Icon */}
       <div
-        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${feature.color}`}
+        className={`
+          flex
+          h-10
+          w-10
+          shrink-0
+          items-center
+          justify-center
+          rounded-xl
+          md:h-11
+          md:w-11
+          ${feature.color}
+        `}
       >
-        <span className="text-lg">
+        <span className="text-base md:text-lg">
           {feature.icon}
         </span>
       </div>
 
-      <div>
-        <h3 className="font-mono text-2xl font-bold text-black">
+      {/* Content */}
+      <div className="min-w-0 flex-1">
+        <h3
+          className="
+            break-words
+            font-mono
+            font-bold
+            text-black
+            text-lg
+            sm:text-xl
+            lg:text-2xl
+          "
+        >
           {feature.title}
         </h3>
 
-        <p className="mt-3 font-mono text-base leading-8 text-[#8c8ca0]">
+        <p
+          className="
+            mt-2
+            font-mono
+            text-sm
+            leading-7
+            text-[#8c8ca0]
+            sm:text-base
+            md:mt-3
+          "
+        >
           {feature.desc}
         </p>
       </div>
