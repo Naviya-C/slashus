@@ -21,16 +21,7 @@ export default function Features() {
               ))}
             </div>
           </div>
-
-          <div className="space-y-10">
-            {FEATURES.map((feature) => (
-              <FeatureItem
-                key={feature.title}
-                feature={feature}
-              />
-              ))}
-            </div>
-          </div>
+        </div>
     </section>
   );
 }
