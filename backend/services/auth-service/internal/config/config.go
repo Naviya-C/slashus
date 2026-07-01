@@ -13,7 +13,7 @@ type Config struct{
 }
 
 func LoadEnv()(*Config, error){
-	_ = godotenv.Load()
+	_ = godotenv.Load("../../../.env")
 
 	cgf := &Config{
 		DatabaseURL: os.Getenv("DATABASE_URL"),

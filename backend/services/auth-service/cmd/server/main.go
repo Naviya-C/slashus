@@ -13,7 +13,7 @@ import (
 	"auth-service/internal/usecase"
 )
 
-func main() {
+func main() { 
 
 	cfg, err := config.LoadEnv()
 
@@ -28,15 +28,12 @@ func main() {
 	}
 
 	userRepo := infraRepo.NewPostgresUserRepository(db)
+	passwordService := service.NewArgon2idPasswordService()
 
-	passwordService :=
-		service.NewArgon2idPasswordService()
-
-	registerUsecase :=
-		usecase.NewRegisterUsecase(
-			userRepo,
-			passwordService,
-		)
+	registerUsecase := usecase.NewRegisterUsecase(
+		userRepo,
+		passwordService,
+	)
 
 	authHandler :=
 		handler.NewAuthHandler(
