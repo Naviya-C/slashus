@@ -23,7 +23,7 @@ const LINKS = {
 
 export default function Footer() {
   return (
-    <footer className="bg-[#09090f] px-8 py-14 text-white/35 mt-12">
+    <footer className="bg-[#09090f] px-8 py-14 text-white/35">
       <div className="mx-auto max-w-7xl">
 
         {/* Top */}
