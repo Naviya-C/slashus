@@ -9,15 +9,18 @@ import (
 type LoginUseCase struct{
 	userRepo repository.UserRepository
 	passwordService service.PasswordService
+	jwtService service.JWTService
 }
 
 func ExistingLoginUseCase(
 	useRepo repository.UserRepository,
 	passwordService service.PasswordService,
+	jwtService service.JWTService,
 ) *LoginUseCase{
 	return &LoginUseCase{
 		userRepo: useRepo,
 		passwordService: passwordService,
+		jwtService: jwtService,
 	}
 }
 
@@ -40,7 +43,10 @@ func (l *LoginUseCase) Login(
 		return "", errors.New("invalid email or password")
 	}
 
-	token := "dfd"
+	token, err := l.jwtService.GenerateToken(existing_user.ID.String(), existing_user.Email)
+	if err != nil{
+		return "", errors.New("Failed to generate Authentication Token")
+	}
 
 	return token, nil
 
