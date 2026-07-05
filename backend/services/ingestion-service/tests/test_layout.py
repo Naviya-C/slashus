@@ -1,0 +1,1 @@
+"""Section tree + paragraph merging."""

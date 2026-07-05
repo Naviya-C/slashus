@@ -35,10 +35,17 @@ func main() {
 		passwordService,
 	)
 
-	authHandler :=
-		handler.NewAuthHandler(
-			registerUsecase,
-		)
+	jwtSecret := cfg.JWTService
+
+	jwtService := service.NewJWTService(jwtSecret)
+
+	loginUseCase := usecase.ExistingLoginUseCase(
+		userRepo, 
+		passwordService,
+		jwtService,
+	)
+
+	authHandler := handler.NewAuthHandler(registerUsecase, loginUseCase,)
 
 	mux := http.NewServeMux()
 
@@ -49,7 +56,5 @@ func main() {
 
 	log.Println("Server running on :8080")
 
-	log.Fatal(
-		http.ListenAndServe(":8080", mux),
-	)
+	log.Fatal(http.ListenAndServe(":8080", mux),)
 }
