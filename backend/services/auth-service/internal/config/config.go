@@ -10,14 +10,16 @@ import (
 type Config struct{
 	DatabaseURL		string
 	DatabaseURL_P	string
+	JWTService string
 }
 
 func LoadEnv()(*Config, error){
-	_ = godotenv.Load("../../../.env")
+	_ = godotenv.Load()
 
 	cgf := &Config{
 		DatabaseURL: os.Getenv("DATABASE_URL"),
 		DatabaseURL_P: os.Getenv("DATABASE_URL_P"),
+		JWTService: os.Getenv("JWT_SECRET"),
 	}
 
 	if cgf.DatabaseURL == "" {
