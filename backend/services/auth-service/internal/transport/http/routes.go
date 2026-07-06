@@ -11,6 +11,7 @@ func RegisterRoutes(mux *http.ServeMux, authHandler *handler.AuthHandler) {
 	// Public Authentication Routes
 	mux.HandleFunc("POST /api/v1/auth/register", authHandler.Register)
 	mux.HandleFunc("POST /api/v1/auth/login", authHandler.Login)
+	mux.HandleFunc("POST /api/v1/auth/refresh", authHandler.Refresh)
 	
 	// Example of adding a health check endpoint directly
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
