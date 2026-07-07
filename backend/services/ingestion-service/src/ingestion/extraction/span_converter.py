@@ -85,7 +85,7 @@ def convert_spans(spans: list[Span], converter=None) -> list[Line]:
     # 2. Reassemble lines using the grouping span_reader preserved.
     return _group_into_lines(spans)
 
-
+ 
 def _group_into_lines(spans: list[Span]) -> list[Line]:
     """Join consecutive same-line spans into Line objects, in order."""
     lines: list[Line] = []
