@@ -25,8 +25,8 @@ fast, testable, and re-runnable without re-embedding).
 
 DESIGN
 ------
-- Dependency injection via IngestDeps: tests pass fakes / nulls (no LLM, no
-  network), production passes real adapters. See pipeline/deps.default_deps.
+- Dependency injection via IngestDeps: tests pass fakes (no LLM, no network),
+  production passes real adapters.
 - No tokenizer: Gemini embeds, so chunk sizing uses a local word estimate.
 - Failure isolation: each page, and each table/image, is wrapped so one bad item
   doesn't kill a long ingest -- it's logged and skipped.
@@ -64,7 +64,7 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class IngestDeps:
-    """The ports the pipeline calls through. Pass fakes/nulls in tests, real in prod.
+    """The ports the pipeline calls through. Pass fakes in tests, real in prod.
     No tokenizer -- Gemini embeds, so chunk sizing is a local estimate."""
     converter: object     # FontConverter
     summarizer: object    # TableSummarizer
@@ -73,20 +73,37 @@ class IngestDeps:
     ocr: object | None = None  # OCREngine (deferred)
 
 
-def _section_for_bbox(bbox, blocks) -> list[str]:
-    """Best-effort section path for a table/image: the section of the last block
-    that starts at or above it (headings include their own text)."""
-    top = bbox[1]
-    eff: list[str] = []
-    for b in blocks:
-        if b.bbox[1] <= top + 1:
-            eff = list(b.section_path) + ([b.text] if b.kind == "heading" else [])
-        else:
-            break
-    return eff
+def _span_in_tables(bbox, table_bboxes) -> bool:
+    """True if a span's center falls inside any detected table region."""
+    cx = (bbox[0] + bbox[2]) / 2
+    cy = (bbox[1] + bbox[3]) / 2
+    for tb in table_bboxes:
+        if tb[0] <= cx <= tb[2] and tb[1] <= cy <= tb[3]:
+            return True
+    return False
 
 
-def _tables_for_page(fpage, plumber_page, pageno, blocks, deps, doc_id, next_index):
+def _overlaps(a, b) -> bool:
+    """True if two bboxes overlap at all (used to spare heading spans from dedup)."""
+    return not (a[2] < b[0] or a[0] > b[2] or a[3] < b[1] or a[1] > b[3])
+
+
+def _dedup_table_bboxes(tables) -> list:
+    """Drop tables fully contained inside another (pdfplumber returns nested grids)."""
+    boxes = [t.bbox for t in tables]
+    kept = []
+    for i, a in enumerate(boxes):
+        contained = any(
+            j != i and b[0] <= a[0] + 1 and b[1] <= a[1] + 1
+            and b[2] >= a[2] - 1 and b[3] >= a[3] - 1
+            for j, b in enumerate(boxes)
+        )
+        if not contained:
+            kept.append(a)
+    return kept
+
+
+def _tables_for_page(fpage, plumber_page, pageno, index, deps, doc_id, next_index):
     chunks: list[Chunk] = []
     try:
         tables = extract_tables(fpage, plumber_page, deps.converter)
@@ -98,7 +115,7 @@ def _tables_for_page(fpage, plumber_page, pageno, blocks, deps, doc_id, next_ind
         try:
             chunks.append(table_to_chunk(
                 st, page=pageno, chunk_index=next_index + len(chunks),
-                section_path=_section_for_bbox(st.table.bbox, blocks),
+                section_path=index.path_for(st.table.bbox[1]),   # y-position section
                 table_id=f"{doc_id}_t{pageno}_{k}",
             ))
         except Exception:
@@ -106,7 +123,7 @@ def _tables_for_page(fpage, plumber_page, pageno, blocks, deps, doc_id, next_ind
     return chunks
 
 
-def _images_for_page(fpage, pageno, blocks, deps, user_id, doc_id, next_index):
+def _images_for_page(fpage, pageno, index, deps, user_id, doc_id, next_index):
     chunks: list[Chunk] = []
     try:
         images = extract_images(fpage)
@@ -135,7 +152,7 @@ def _images_for_page(fpage, pageno, blocks, deps, user_id, doc_id, next_index):
         try:
             chunks.append(image_to_chunk(
                 cim, page=pageno, chunk_index=next_index + len(chunks),
-                section_path=_section_for_bbox(cim.image.bbox, blocks),
+                section_path=index.path_for(cim.image.bbox[1]),   # y-position section
                 storage_key=keys[j], image_id=f"img_{pageno}_{j}",
             ))
         except Exception:
@@ -143,28 +160,52 @@ def _images_for_page(fpage, pageno, blocks, deps, user_id, doc_id, next_index):
     return chunks
 
 
-def _process_page(fpage, plumber_page, pageno, deps, user_id, doc_id, max_tokens, start_index):
+def _process_page(fpage, plumber_page, pageno, deps, user_id, doc_id, max_tokens, start_index,
+                  section_stack):
     result = classify_page(fpage)
     if result.decision is PageType.EMPTY:
-        return []
+        return [], section_stack
     if result.decision is PageType.SCANNED:
         if deps.ocr is None:
             log.info("scanned page %s skipped (no OCR wired)", pageno)
         # OCR hook: deps.ocr.read(fpage) -> text -> block -> chunk (deferred)
-        return []
+        return [], section_stack
 
-    # DIGITAL path
-    spans = read_spans(fpage)
-    lines = convert_spans(spans, deps.converter)
-    infos = build_sections(lines)
-    blocks = build_blocks(infos)
+    # --- tables first: pdfplumber owns table detection; get their regions ---
+    try:
+        tables = extract_tables(fpage, plumber_page, deps.converter)
+    except Exception:
+        log.warning("table detect failed on page %s", pageno, exc_info=True)
+        tables = []
+    table_regions = _dedup_table_bboxes(tables)
+
+    # --- read ALL spans, detect headings BEFORE dedup (so a heading that sits in
+    #     a falsely-detected table box, e.g. a page-number cell, is never lost) ---
+    all_spans = read_spans(fpage)
+    all_lines = convert_spans(all_spans, deps.converter)
+    infos, index = build_sections(all_lines, section_stack)
+    heading_boxes = [i.bbox for i in infos if i.is_heading]
+
+    def _keep(bbox):
+        # keep a span if it is NOT inside a table region, OR it is (part of) a heading
+        if not _span_in_tables(bbox, table_regions):
+            return True
+        return any(_overlaps(bbox, hb) for hb in heading_boxes)
+
+    # --- rebuild body from spans outside table regions (headings preserved) ---
+    body_spans = [s for s in all_spans if _keep(s.bbox)]
+    body_lines = convert_spans(body_spans, deps.converter)
+    body_infos, _ = build_sections(body_lines, section_stack)   # same stack -> same index basis
+    blocks = build_blocks(body_infos)
+    for b in blocks:                                  # assign section BY POSITION
+        b.section_path = index.path_for(b.bbox[1])
 
     page_chunks = chunk_blocks(blocks, page=pageno, max_tokens=max_tokens, start_index=start_index)
-    page_chunks += _tables_for_page(fpage, plumber_page, pageno, blocks, deps,
+    page_chunks += _tables_for_page(fpage, plumber_page, pageno, index, deps,
                                     doc_id, start_index + len(page_chunks))
-    page_chunks += _images_for_page(fpage, pageno, blocks, deps,
+    page_chunks += _images_for_page(fpage, pageno, index, deps,
                                     user_id, doc_id, start_index + len(page_chunks))
-    return page_chunks
+    return page_chunks, index.final_stack
 
 
 def _stamp(chunks: list[Chunk], doc_id: str, user_id: str, source_name: str) -> None:
@@ -189,15 +230,16 @@ def ingest(
 ) -> list[Chunk]:
     """Run the whole pipeline on a PDF and return its chunks (unembedded)."""
     all_chunks: list[Chunk] = []
+    section_stack: list = []          # open headings carried across pages
     fdoc = fitz.open(pdf_path)
     pdoc = pdfplumber.open(pdf_path)
     try:
         for i, fpage in enumerate(fdoc):
             pageno = i + 1
             try:
-                page_chunks = _process_page(
+                page_chunks, section_stack = _process_page(
                     fpage, pdoc.pages[i], pageno, deps, user_id, doc_id,
-                    max_tokens, start_index=len(all_chunks),
+                    max_tokens, start_index=len(all_chunks), section_stack=section_stack,
                 )
                 all_chunks.extend(page_chunks)
             except Exception:
@@ -208,3 +250,5 @@ def ingest(
 
     _stamp(all_chunks, doc_id, user_id, source_name)
     return all_chunks
+
+
