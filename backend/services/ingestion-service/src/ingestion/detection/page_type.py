@@ -73,7 +73,7 @@ from ..config import load_env
 
 globalConfig = load_env()
 
-DEFAULT_TEXT_THRESHOLD: int = globalConfig["DEFAULT_COVERAGE_THRESHOLD"]  
+DEFAULT_TEXT_THRESHOLD: int = globalConfig["DEFAULT_TEXT_THRESHOLD"]  
 DEFAULT_COVERAGE_THRESHOLD: float = globalConfig["DEFAULT_COVERAGE_THRESHOLD"]
 
 
