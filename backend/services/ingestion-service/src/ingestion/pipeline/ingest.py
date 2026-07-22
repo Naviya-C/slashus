@@ -57,7 +57,9 @@ from src.ingestion.extraction.image_extractor import extract_images
 from src.ingestion.enrichment.caption_images import caption_images
 from src.ingestion.chunking.side_chunks import table_to_chunk, image_to_chunk
 from src.ingestion.ports.storage import image_key
-from src.ingestion.models.chunk import Chunk
+from src.ingestion.models.chunk import Chunk, ChunkType
+from src.ingestion.chunking.fallback_splitter import recursive_split
+from src.ingestion.chunking.token_estimate import estimate_tokens
 
 log = logging.getLogger(__name__)
 
@@ -103,10 +105,11 @@ def _dedup_table_bboxes(tables) -> list:
     return kept
 
 
-def _tables_for_page(fpage, plumber_page, pageno, index, deps, doc_id, next_index):
+def _tables_for_page(tables, pageno, index, deps, doc_id, next_index):
+    """`tables` were already extracted by _process_page — extraction used to run
+    TWICE per page (once for regions, once here), doubling pdfplumber work."""
     chunks: list[Chunk] = []
     try:
-        tables = extract_tables(fpage, plumber_page, deps.converter)
         summarized = summarize_tables(tables, deps.summarizer)
     except Exception:
         log.warning("table extraction failed on page %s", pageno, exc_info=True)
@@ -135,12 +138,13 @@ def _images_for_page(fpage, pageno, index, deps, user_id, doc_id, next_index):
     keys: list[str | None] = []
     for j, img in enumerate(images):
         key = image_key(user_id, doc_id, f"img_{pageno}_{j}", img.ext)
+        url = None
         try:
-            deps.storage.put(key, img.data)
+            url = deps.storage.put(key, img.data)   # put() returns the locator
         except Exception:
             log.warning("image store failed on page %s", pageno, exc_info=True)
             key = None
-        keys.append(key)
+        keys.append((key, url))
 
     try:
         captioned = caption_images(images, deps.captioner)
@@ -153,11 +157,47 @@ def _images_for_page(fpage, pageno, index, deps, user_id, doc_id, next_index):
             chunks.append(image_to_chunk(
                 cim, page=pageno, chunk_index=next_index + len(chunks),
                 section_path=index.path_for(cim.image.bbox[1]),   # y-position section
-                storage_key=keys[j], image_id=f"img_{pageno}_{j}",
+                storage_key=keys[j][0], storage_url=keys[j][1],
+                image_id=f"img_{pageno}_{j}",
             ))
         except Exception:
             log.warning("image->chunk failed on page %s", pageno, exc_info=True)
     return chunks
+
+
+def _ocr_page(fpage, pageno, deps, max_tokens, start_index, section_stack):
+    """Scanned page -> OCR text -> budget-sized TEXT chunks.
+
+    OCR gives no font sizes, so heading detection is impossible here; chunks
+    inherit the section breadcrumb carried over from the last digital page
+    (section_stack). If the whole document is scanned, that stack stays empty
+    and these chunks have no title — see embedding/cleaning.py, which can
+    drop or keep untitled chunks at store time.
+    """
+    try:
+        text = deps.ocr.read(fpage)
+    except Exception:
+        log.warning("OCR failed on page %s", pageno, exc_info=True)
+        return []
+    if not text:
+        return []
+
+    breadcrumb = [str(h) for h in section_stack] if section_stack else []
+    pieces = recursive_split(text, estimate_tokens, max_tokens)
+    return [
+        Chunk(
+            text=p,
+            embed_text=p,
+            type=ChunkType.TEXT,
+            section_path=list(breadcrumb),
+            page=pageno,
+            bbox=None,
+            chunk_index=start_index + i,
+            token_count=estimate_tokens(p),
+            extra={"ocr": True},
+        )
+        for i, p in enumerate(pieces)
+    ]
 
 
 def _process_page(fpage, plumber_page, pageno, deps, user_id, doc_id, max_tokens, start_index,
@@ -168,8 +208,9 @@ def _process_page(fpage, plumber_page, pageno, deps, user_id, doc_id, max_tokens
     if result.decision is PageType.SCANNED:
         if deps.ocr is None:
             log.info("scanned page %s skipped (no OCR wired)", pageno)
-        # OCR hook: deps.ocr.read(fpage) -> text -> block -> chunk (deferred)
-        return [], section_stack
+            return [], section_stack
+        return _ocr_page(fpage, pageno, deps, max_tokens, start_index,
+                         section_stack), section_stack
 
     # --- tables first: pdfplumber owns table detection; get their regions ---
     try:
@@ -179,29 +220,27 @@ def _process_page(fpage, plumber_page, pageno, deps, user_id, doc_id, max_tokens
         tables = []
     table_regions = _dedup_table_bboxes(tables)
 
-    # --- read ALL spans, detect headings BEFORE dedup (so a heading that sits in
-    #     a falsely-detected table box, e.g. a page-number cell, is never lost) ---
+    # --- read + convert ALL spans EXACTLY ONCE. convert_spans mutates spans in
+    #     place, so a second pass would double-convert (e.g. "1." -> "1ග"). We
+    #     detect headings on the full set, then filter the resulting INFOS -- never
+    #     re-convert. ---
     all_spans = read_spans(fpage)
-    all_lines = convert_spans(all_spans, deps.converter)
+    all_lines = convert_spans(all_spans, deps.converter)   # the ONLY conversion
     infos, index = build_sections(all_lines, section_stack)
-    heading_boxes = [i.bbox for i in infos if i.is_heading]
 
-    def _keep(bbox):
-        # keep a span if it is NOT inside a table region, OR it is (part of) a heading
-        if not _span_in_tables(bbox, table_regions):
-            return True
-        return any(_overlaps(bbox, hb) for hb in heading_boxes)
+    # keep an info if it is NOT inside a table region, OR it is a heading that
+    # happens to sit inside a falsely-detected table box (e.g. a page-number cell)
+    body_infos = [
+        i for i in infos
+        if i.is_heading or not _span_in_tables(i.bbox, table_regions)
+    ]
 
-    # --- rebuild body from spans outside table regions (headings preserved) ---
-    body_spans = [s for s in all_spans if _keep(s.bbox)]
-    body_lines = convert_spans(body_spans, deps.converter)
-    body_infos, _ = build_sections(body_lines, section_stack)   # same stack -> same index basis
     blocks = build_blocks(body_infos)
     for b in blocks:                                  # assign section BY POSITION
         b.section_path = index.path_for(b.bbox[1])
 
     page_chunks = chunk_blocks(blocks, page=pageno, max_tokens=max_tokens, start_index=start_index)
-    page_chunks += _tables_for_page(fpage, plumber_page, pageno, index, deps,
+    page_chunks += _tables_for_page(tables, pageno, index, deps,
                                     doc_id, start_index + len(page_chunks))
     page_chunks += _images_for_page(fpage, pageno, index, deps,
                                     user_id, doc_id, start_index + len(page_chunks))
@@ -231,7 +270,7 @@ def ingest(
     """Run the whole pipeline on a PDF and return its chunks (unembedded)."""
     all_chunks: list[Chunk] = []
     section_stack: list = []          # open headings carried across pages
-    fdoc = fitz.open(pdf_path)
+    fdoc = fitz.open(pdf_path) 
     pdoc = pdfplumber.open(pdf_path)
     try:
         for i, fpage in enumerate(fdoc):
@@ -250,5 +289,3 @@ def ingest(
 
     _stamp(all_chunks, doc_id, user_id, source_name)
     return all_chunks
-
-
