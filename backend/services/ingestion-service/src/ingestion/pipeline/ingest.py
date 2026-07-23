@@ -44,6 +44,7 @@ from dataclasses import dataclass
 
 import fitz          # PyMuPDF
 import pdfplumber
+from uuid import uuid4
 
 from src.ingestion.detection.page_type import classify_page, PageType
 from src.ingestion.extraction.span_reader import read_spans
@@ -135,16 +136,17 @@ def _images_for_page(fpage, pageno, index, deps, user_id, doc_id, next_index):
         return chunks
 
     # store bytes first (per-image isolation), remember the keys
-    keys: list[str | None] = []
+    keys: list[tuple[str | None, str |None, str]] = []
     for j, img in enumerate(images):
-        key = image_key(user_id, doc_id, f"img_{pageno}_{j}", img.ext)
+        image_id = str(uuid4())
+        key = image_key(user_id, doc_id, image_id, img.ext)
         url = None
         try:
             url = deps.storage.put(key, img.data)   # put() returns the locator
         except Exception:
             log.warning("image store failed on page %s", pageno, exc_info=True)
             key = None
-        keys.append((key, url))
+        keys.append((key, url, image_id))
 
     try:
         captioned = caption_images(images, deps.captioner)
@@ -154,11 +156,12 @@ def _images_for_page(fpage, pageno, index, deps, user_id, doc_id, next_index):
 
     for j, cim in enumerate(captioned):
         try:
+            key, url, image_id = keys[j]
             chunks.append(image_to_chunk(
                 cim, page=pageno, chunk_index=next_index + len(chunks),
                 section_path=index.path_for(cim.image.bbox[1]),   # y-position section
-                storage_key=keys[j][0], storage_url=keys[j][1],
-                image_id=f"img_{pageno}_{j}",
+                storage_key=key, storage_url=url,
+                image_id=image_id,
             ))
         except Exception:
             log.warning("image->chunk failed on page %s", pageno, exc_info=True)
