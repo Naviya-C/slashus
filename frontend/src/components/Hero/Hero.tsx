@@ -1,6 +1,11 @@
 import { Sparkles, ArrowRight, Play } from "lucide-react";
 
+import { useNav } from "../../Hooks/useNav";
+
 function Hero() {
+
+  const { goToLogin } = useNav();
+
   return (
     <section className="
                     relative 
@@ -78,7 +83,9 @@ function Hero() {
                 sm:flex-row
             "
         >
-        <button className="
+        <button 
+              onClick={goToLogin}
+              className="
                     flex 
                     items-center 
                     justify-center 
@@ -94,7 +101,7 @@ function Hero() {
                     hover:scale-105
                     hover:cursor-pointer
                 "
-        >
+              >
           <Sparkles size={18} />
           Try Slash Free
           <ArrowRight size={18} />
