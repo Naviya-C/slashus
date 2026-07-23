@@ -10,11 +10,13 @@ function SignUpRight() {
     return (
         <div
             className="
-                w-3/5
+                w-full
                 flex
                 items-center
                 justify-center
-                p-12
+                p-6
+                sm:p-8
+                lg:p-12
             "
         >
             <div className="w-full max-w-md">
