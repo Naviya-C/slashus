@@ -4,9 +4,13 @@ import { LogIn, Menu, X } from "lucide-react";
 import { useNavScroll } from "../../Hooks/NavHook";
 import NavButton from "../Atomic/NavButton";
 
+import { useNav } from "../../Hooks/useNav";
+
 function Navbar() {
     const scrolled = useNavScroll(20);
     const [menuOpen, setMenuOpen] = useState(false);
+
+    const { goToLogin } = useNav();
 
     const closeMenu = () => setMenuOpen(false);
 
@@ -73,6 +77,7 @@ function Navbar() {
                         "
                     >
                         <button
+                            onClick={goToLogin}
                             className="
                                 flex
                                 items-center
@@ -84,6 +89,7 @@ function Navbar() {
                                 py-2
                                 hover:bg-gray-100
                                 transition
+                                cursor-pointer
                             "
                         >
                             <LogIn size={20} />
@@ -168,7 +174,10 @@ function Navbar() {
                         </button>
 
                         <button
-                            onClick={closeMenu}
+                            onClick={() => {
+                                closeMenu();
+                                goToLogin();
+                            }}
                             className="
                                 mt-2
                                 flex

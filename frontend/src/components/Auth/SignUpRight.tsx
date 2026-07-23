@@ -4,21 +4,17 @@ import TextInput from "./TextInput";
 
 import { useNav } from "../../Hooks/useNav";
 
+function SignUpRight() {
+    const { goToLogin } = useNav();
 
-function LoginRight(){
-
-    const {goToRegister} = useNav();
-
-    return(
+    return (
         <div
             className="
-                w-full
-                min-h-screen
+                w-3/5
                 flex
                 items-center
                 justify-center
-                p-6
-                lg:p-12
+                p-12
             "
         >
             <div className="w-full max-w-md">
@@ -28,17 +24,27 @@ function LoginRight(){
                         font-bold
                         text-center
                         text-slate-900
-                        mb-10
+                        mb-3
                     "
                 >
-                    Welcome Back
+                    Create Account
                 </h2>
+
+                <p
+                    className="
+                        text-center
+                        text-slate-500
+                        mb-8
+                    "
+                >
+                    Join SLASHUS and start learning smarter.
+                </p>
 
                 {/* OAuth */}
                 <OAuth />
 
                 {/* Divider */}
-                <div className="flex items-center mb-8">
+                <div className="flex items-center my-8">
                     <div className="flex-1 border-t border-slate-300" />
 
                     <span
@@ -48,28 +54,59 @@ function LoginRight(){
                             text-slate-500
                         "
                     >
-                        or sign in with email
+                        or sign up with email
                     </span>
 
                     <div className="flex-1 border-t border-slate-300" />
                 </div>
 
                 {/* Username */}
-                <TextInput 
-                    id="uname"
-                    label="UserName"   
-                    type="text" 
+                <TextInput
+                    id="username"
+                    label="Username"
                 />
-                <br/>
+                <br />
+
+                {/* First Name */}
+                <TextInput
+                    id="firstname"
+                    label="First Name"
+                />
+                <br />
+
+                {/* Last Name */}
+                <TextInput
+                    id="lastname"
+                    label="Last Name"
+                />
+                <br />
+
+                {/* Email */}
+                <TextInput
+                    id="email"
+                    label="Email"
+                    type="email"
+                />
+                <br />
+
                 {/* Password */}
-                <TextInput 
-                    id="pword"
+                <TextInput
+                    id="password"
                     label="Password"
                     type="password"
                 />
+                <br />
 
-                {/* Login */}
-                <AuthButton name="Login"/>
+                {/* Confirm Password */}
+                <TextInput
+                    id="confirmPassword"
+                    label="Confirm Password"
+                    type="password"
+                />
+
+                <div className="mt-8">
+                    <AuthButton name="Create Account" />
+                </div>
 
                 <p
                     className="
@@ -78,9 +115,9 @@ function LoginRight(){
                         text-slate-500
                     "
                 >
-                    Don't have an account?{" "}
+                    Already have an account?{" "}
                     <button
-                        onClick={goToRegister}
+                        onClick={goToLogin}
                         className="
                             text-indigo-600
                             font-medium
@@ -88,7 +125,7 @@ function LoginRight(){
                             cursor-pointer
                         "
                     >
-                        Sign Up
+                        Sign In
                     </button>
                 </p>
             </div>
@@ -96,4 +133,4 @@ function LoginRight(){
     );
 }
 
-export default LoginRight;
+export default SignUpRight;
