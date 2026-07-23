@@ -5,8 +5,8 @@ adapters/local_storage.py
 PURPOSE
 -------
 Storage implemented on the local filesystem. Lets the whole image pipeline run
-and be tested end to end with no cloud account. The cloud adapter (R2 / S3 /
-MinIO) implements the SAME Storage port later; swapping is a one-line change.
+and be tested end to end with no cloud account. GCSStorage implements the SAME
+Storage port; swapping is a one-line change in deps.py.
 
 Keys map to paths under a base directory: key "user_a/doc_1/images/img.png"
 becomes <base>/user_a/doc_1/images/img.png. Per-user isolation falls out of the
@@ -15,13 +15,15 @@ key layout for free (each user is a top-level folder).
 SAFETY
 ------
 Keys are validated to prevent path traversal (no '..', no absolute paths), so a
-crafted key can never write outside the base directory.
+crafted key can never write outside the base directory. delete_prefix() also
+refuses an empty prefix, which would otherwise match every file under the base.
 """
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
+
+from src.ingestion.ports.storage import StorageKeyNotFound
 
 
 class LocalStorage:
@@ -40,6 +42,8 @@ class LocalStorage:
             raise ValueError(f"key escapes base dir: {key!r}")
         return path
 
+    # ------------------------------------------------------------------
+
     def put(self, key: str, data: bytes) -> str:
         path = self._resolve(key)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -47,25 +51,48 @@ class LocalStorage:
         return self.url(key)
 
     def get(self, key: str) -> bytes:
-        return self._resolve(key).read_bytes()
+        """Read bytes back.
+
+        Raises StorageKeyNotFound -- the SAME type GCSStorage raises -- so
+        callers handle a missing key identically on both backends.
+        """
+        path = self._resolve(key)
+        try:
+            return path.read_bytes()
+        except FileNotFoundError as exc:
+            raise StorageKeyNotFound(key) from exc
+
+    def exists(self, key: str) -> bool:
+        """Cheap presence check; no read."""
+        return self._resolve(key).is_file()
 
     def url(self, key: str) -> str:
-        # local locator; the cloud adapter returns a signed URL here instead
+        # local locator; GCSStorage returns a signed URL here instead
         return self._resolve(key).as_uri()
 
     def delete_prefix(self, prefix: str) -> int:
+        """Delete everything under a key prefix (one user / one doc wipe).
+
+        Guards against an empty prefix: "".startswith("") is True for every
+        path, so an empty value would silently wipe the entire base directory.
+        """
+        if not prefix or not prefix.strip("/"):
+            raise ValueError("refusing to delete an empty prefix")
+
         base = self._base.resolve()
         if not base.exists():
             return 0
+
         count = 0
         for p in list(base.rglob("*")):
             if p.is_file() and p.relative_to(base).as_posix().startswith(prefix):
                 p.unlink()
                 count += 1
-        # tidy up now-empty directories
+
+        # tidy up now-empty directories (deepest first)
         for d in sorted((d for d in base.rglob("*") if d.is_dir()), reverse=True):
             try:
                 d.rmdir()
             except OSError:
-                pass
+                pass  # not empty; leave it
         return count
