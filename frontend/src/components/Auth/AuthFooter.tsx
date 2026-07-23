@@ -2,7 +2,7 @@ function AuthFooter(){
     return(
         <div
             className="
-                h-72
+                h-58
                 rounded-3xl
                 bg-gradient-to-br
                 from-indigo-600

@@ -2,15 +2,23 @@ import AuthButton from "../Atomic/AuthButton";
 import OAuth from "./OAuth";
 import TextInput from "./TextInput";
 
+import { useNav } from "../../Hooks/useNav";
+
+
 function LoginRight(){
+
+    const {goToRegister} = useNav();
+
     return(
         <div
             className="
-                w-3/5
+                w-full
+                min-h-screen
                 flex
                 items-center
                 justify-center
-                p-12
+                p-6
+                lg:p-12
             "
         >
             <div className="w-full max-w-md">
@@ -72,6 +80,7 @@ function LoginRight(){
                 >
                     Don't have an account?{" "}
                     <button
+                        onClick={goToRegister}
                         className="
                             text-indigo-600
                             font-medium
