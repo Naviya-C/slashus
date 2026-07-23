@@ -12,18 +12,17 @@ a fake -- no API calls.
 THE CONTRACT
 ------------
     embed_documents(texts) -> list[list[float]]   # for chunks at ingest
-    embed_query(text)      -> list[float]         # for the user's search query
+    encode_documents(texts)  -> list[(indices, values)]              # sparse TF
 
 Two methods on purpose: retrieval models embed a document and a query
 DIFFERENTLY (asymmetric task types). Keeping them separate makes callers use the
 right one. This only covers the DENSE vector; BM25 sparse retrieval is unchanged.
 """
 
-from __future__ import annotations
+from typing import Protocol, Sequence
 
-from typing import Protocol
+class DenseEmbedder(Protocol):
+    def embed_documents(self, texts: Sequence[str]) -> list[list[float]]: ...
 
-
-class Embedder(Protocol):
-    def embed_documents(self, texts: list[str]) -> list[list[float]]: ...
-    def embed_query(self, text: str) -> list[float]: ...
+class SparseEncoder(Protocol):
+    def encode_documents(self, texts: Sequence[str]) -> list[tuple[list[int], list[float]]]: ...

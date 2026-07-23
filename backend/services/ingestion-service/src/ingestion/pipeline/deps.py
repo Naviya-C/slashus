@@ -36,7 +36,8 @@ def _safe(factory, fallback, name):
         return fallback
 
 
-def default_deps(*, gemini_key: str | None = None, storage=None, store_dir: str = "./_store") -> IngestDeps:
+def default_deps(*, gemini_key: str | None = None, storage=None, store_dir: str = "./_store",
+                 gcs_bucket: str | None = None, ocr: bool = True) -> IngestDeps:
     """Assemble deps: real where configured, null where not."""
     # font converter: piliwela if the build is present, else passthrough
     def _converter():
@@ -47,11 +48,11 @@ def default_deps(*, gemini_key: str | None = None, storage=None, store_dir: str 
     # LLMs: only if a key is given (and the SDK is importable)
     if gemini_key:
         def _sum():
-            from llm_summarizer import GeminiTableSummarizer
+            from src.ingestion.adapters.llm_summarizer import GeminiTableSummarizer
             return GeminiTableSummarizer(api_key=gemini_key)
 
         def _cap():
-            from llm_captioner import GeminiImageCaptioner
+            from src.ingestion.adapters.llm_captioner import GeminiImageCaptioner
             return GeminiImageCaptioner(api_key=gemini_key)
 
         summarizer = _safe(_sum, NullSummarizer(), "gemini summarizer")
@@ -59,12 +60,29 @@ def default_deps(*, gemini_key: str | None = None, storage=None, store_dir: str 
     else:
         summarizer, captioner = NullSummarizer(), NullCaptioner()
 
-    # storage: caller-provided (e.g. cloud) or local disk
+    # storage: caller-provided > GCS (if bucket configured) > local disk.
+    # GCS put() returns signed/public URLs, which flow into each image
+    # chunk's payload as storage_url — the link the agent uses to show images.
+    if storage is None and gcs_bucket:
+        def _gcs():
+            from src.ingestion.adapters.gcs_storage import GCSStorage
+            return GCSStorage(gcs_bucket)
+        storage = _safe(_gcs, None, "gcs storage")
     storage = storage or LocalStorage(store_dir)
+
+    # OCR: tesseract if installed with the sin+eng language packs;
+    # otherwise None and scanned pages are skipped (logged, not fatal)
+    ocr_engine = None
+    if ocr:
+        def _ocr():
+            from src.ingestion.adapters.tesseract_ocr import TesseractOCR
+            return TesseractOCR()
+        ocr_engine = _safe(_ocr, None, "tesseract ocr")
 
     return IngestDeps(
         converter=converter,
         summarizer=summarizer,
         captioner=captioner,
         storage=storage,
+        ocr=ocr_engine,
     )

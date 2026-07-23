@@ -1,0 +1,7 @@
+streamlit==1.35.0
+langgraph==0.0.60
+langchain-core==0.2.10
+langchain-openai==0.1.14
+qdrant-client==1.9.2
+pydantic==2.7.4
+python-dotenv==1.0.1

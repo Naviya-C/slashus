@@ -52,6 +52,7 @@ def image_to_chunk(
     chunk_index: int = 0,
     section_path: list[str] | None = None,
     storage_key: str | None = None,
+    storage_url: str | None = None,
     image_id: str | None = None,
 ) -> Chunk:
     """CaptionedImage -> Chunk. Caption is both the content and what gets embedded."""
@@ -66,5 +67,6 @@ def image_to_chunk(
         chunk_index=chunk_index,
         token_count=estimate_tokens(captioned.caption),
         extra={"image_id": image_id, "storage_key": storage_key,
+               "storage_url": storage_url,
                "width": image.width, "height": image.height},
     )

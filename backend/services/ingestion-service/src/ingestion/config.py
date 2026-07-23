@@ -44,4 +44,11 @@ def load_env() -> dict:
     return {
         "DEFAULT_TEXT_THRESHOLD": _get_int("DEFAULT_TEXT_THRESHOLD", 50),
         "DEFAULT_COVERAGE_THRESHOLD": _get_float("DEFAULT_COVERAGE_THRESHOLD", 0.5),
+        "QDRANT_CLUSTER_API": os.getenv("QDRANT_CLUSTER_API"),
+        "QDRANT_CLUSTER_ENDPOINT": os.getenv("QDRANT_CLUSTER_ENDPOINT"),
+        "QDRANT_COLLECTION": os.getenv("QDRANT_COLLECTION", "sinhala_books_v2"),
+        # Google Cloud Storage bucket for extracted images (empty = local disk).
+        # Auth via GOOGLE_APPLICATION_CREDENTIALS or workload identity.
+        "GCS_BUCKET": os.getenv("GCS_BUCKET"),
+        "SPARSE_VOCAB_PATH": os.getenv("SPARSE_VOCAB_PATH", "./_store/sparse_vocab.json"),
     }
