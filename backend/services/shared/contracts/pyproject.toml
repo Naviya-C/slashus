@@ -1,0 +1,13 @@
+[project]
+name = "contracts"
+version = "0.1.0"
+description = "Shared wire schema for the ingestion and embedding services"
+requires-python = ">=3.12"
+dependencies = []          # keep this EMPTY — the contract must stay dependency-free
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["contracts"]
