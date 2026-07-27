@@ -1,0 +1,233 @@
+services:
+
+  ########################################
+  # Redis — used by api-gateway for per-user rate limiting
+  ########################################
+  redis:
+    image: redis:8-alpine
+    container_name: redis
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  ########################################
+  # Kafka (KRaft, single node)
+  ########################################
+  kafka:
+    image: apache/kafka:4.1.0
+    container_name: kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    volumes:
+      - ./data/kafka:/tmp/kraft-combined-logs
+    healthcheck:
+      test: ["CMD", "/opt/kafka/bin/kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+    # NOTE: no `ports:` published to the host on purpose — only api-gateway
+    # needs to be reachable from outside the VM. Everything else talks over
+    # the internal compose network by service name.
+
+  ########################################
+  # Kafka topic initialization (runs once, then exits)
+  ########################################
+  kafka-setup:
+    image: apache/kafka:4.1.0
+    container_name: kafka-setup
+    depends_on:
+      kafka:
+        condition: service_healthy
+    # FIX: the original wrapped this whole block in a literal pair of `"` characters
+    # left over from pasting a shell one-liner into a YAML block scalar. `sh -c`
+    # then received a script that opened a quote it never meaningfully closed and
+    # failed immediately, so no topics were ever created. Removed the stray quotes.
+    command:
+      - /bin/sh
+      - -ec
+      - |
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic documents.uploaded --partitions 1 --replication-factor 1 &&
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic documents.chunks --partitions 1 --replication-factor 1 &&
+          echo 'Topics created' &&
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list
+    restart: "no"
+
+  ########################################
+  # Auth Service (Go) — talks to Neon (managed Postgres), mints RS256 tokens
+  ########################################
+  auth-service:
+    build: 
+      context: ./services/auth-service
+    container_name: auth-service
+    env_file:
+      - ./services/auth-service/.env
+    environment:
+      # Login lockout is now implemented (Redis-backed, see
+      # internal/infrastructure/repository/redis_login_attempts.go). A
+      # separate DB index from the gateway's rate-limit counters, just to
+      # keep the two logically apart on the same Redis instance.
+      REDIS_URL: redis://redis:6379/1
+    depends_on:
+      redis:
+        condition: service_healthy
+    expose:
+      - "8081"
+    restart: unless-stopped
+    # No local `postgres` container: DATABASE_URL in .env already points at
+    # Neon (managed, external). A local postgres service here would start,
+    # pass its healthcheck, and never be talked to — pure wasted RAM on a
+    # small VM. Switch back to self-hosted Postgres only if you drop Neon.
+
+  ########################################
+  # API Gateway (Go) — the ONLY service with a published host port
+  ########################################
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+    container_name: api-gateway
+    env_file:
+      - ./services/api-gateway/.env
+    environment:
+      # FIX: REDIS_URL was never set anywhere (commented out in .env, and
+      # config.Load() hard-fails without it) — the gateway crash-looped on
+      # boot. Redis is the container's own service name on this network.
+      REDIS_URL: redis://redis:6379/0
+      # FIX: these three all pointed at the wrong hostnames/ports (localhost,
+      # and made-up ports 8082/8083/8084). They must match the actual
+      # container_name and the actual port each service listens on.
+      AUTH_URL: http://auth-service:8081
+      UPLOAD_URL: http://upload-service:8002
+      # ingestion-service does not expose an HTTP API yet (see errors list) —
+      # this will 502 until src/ingestion/api/ is implemented. Left pointed
+      # at the right host so it starts working the moment that lands.
+      INGESTION_URL: http://ingestion-service:8003
+      # agentic (the RAG/retrieval service) isn't part of this bundle at all.
+      # Left as a placeholder; /chat, /mark, /history will 502 until it's
+      # deployed and added to this compose file.
+      AGENTIC_URL: http://agentic:8084
+    depends_on:
+      auth-service:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  ########################################
+  # Upload Service (Python/FastAPI)
+  ########################################
+  upload-service:
+    build:
+      context: .
+      dockerfile: services/upload-service/Dockerfile
+      # FIX: this Dockerfile COPYs shared/contracts and shared/storage, which
+      # only exist under the repo root — not under services/upload-service.
+      # The original compose set `context: ./services/upload-service`, so
+      # every build of this image failed at the COPY step. Same fix applied
+      # to ingestion-service and embedding-service below.
+    container_name: upload-service
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-setup:
+        condition: service_completed_successfully
+    env_file:
+      - ./services/upload-service/.env
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      MESSAGE_PROVIDER: kafka
+    expose:
+      - "8002"
+    volumes:
+      - ./data/uploads:/data/uploads
+    restart: unless-stopped
+
+  ########################################
+  # Ingestion Service (Python) — Kafka worker only, no HTTP server yet
+  ########################################
+  ingestion-service:
+    build:
+      context: .
+      dockerfile: services/ingestion-service/Dockerfile
+    container_name: ingestion-service
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-setup:
+        condition: service_completed_successfully
+    env_file:
+      - ./services/ingestion-service/.env
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      UPLOAD_TOPIC: documents.uploaded
+      CHUNKS_TOPIC: documents.chunks
+      INGESTION_GROUP: ingestion
+    volumes:
+      - ./data/uploads:/data/uploads
+    expose:
+      - "8003"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    # GET /health now answers on 8003 (see src/run_all.py) — this is liveness
+    # only. GET /jobs/{id} via the gateway still 502s: real job-status
+    # tracking is a separate feature that needs a shared store, not yet built
+    # (see the docstring in src/ingestion/api/main.py).
+
+  ########################################
+  # Embedding Service (Python) — Kafka worker only, no HTTP server exists
+  ########################################
+  embedding-service:
+    build:
+      context: .
+      dockerfile: services/embedding-service/Dockerfile
+    container_name: embedding-service
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-setup:
+        condition: service_completed_successfully
+    env_file:
+      - ./services/embedding-service/.env
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      CHUNKS_TOPIC: documents.chunks
+      EMBEDDING_GROUP: embedding
+    volumes:
+      - ./data/sparse_vocab:/app/_store
+      - ./data/huggingface:/home/appuser/.cache/huggingface
+    expose:
+      - "8004"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    # RUN EXACTLY ONE replica of this — the sparse encoder writes a shared
+    # vocab file and is single-writer (see the Dockerfile's own comment).
+    # /health now answers on 8004 (see run_all.py); it does not probe Qdrant.
