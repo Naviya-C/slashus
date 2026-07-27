@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shared-storage"
+version = "0.1.0"
+description = "Shared storage adapters for SLASHUS"
+requires-python = ">=3.12"
+
+[tool.setuptools]
+packages = ["storage"]
