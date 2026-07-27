@@ -16,7 +16,8 @@ since Gemini embeds).
 
 from __future__ import annotations
 
-from src.ingestion.models.chunk import Chunk, ChunkType
+from contracts import Chunk, ChunkType
+
 from src.ingestion.enrichment.summarize_tables import SummarizedTable
 from src.ingestion.enrichment.caption_images import CaptionedImage
 from src.ingestion.chunking.token_estimate import estimate_tokens

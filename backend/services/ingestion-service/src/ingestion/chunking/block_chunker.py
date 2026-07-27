@@ -25,8 +25,10 @@ can still inject a precise counter via `count=` if you ever need exactness.
 
 from __future__ import annotations
 
+from contracts import Chunk, ChunkType
+
+
 from src.ingestion.layout.blocks import Block
-from src.ingestion.models.chunk import Chunk, ChunkType
 from src.ingestion.chunking.fallback_splitter import recursive_split
 from src.ingestion.chunking.token_estimate import estimate_tokens
 

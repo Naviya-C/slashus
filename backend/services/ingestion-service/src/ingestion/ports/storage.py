@@ -51,7 +51,7 @@ class StorageKeyNotFound(KeyError):
     same type so callers can handle a missing key without knowing (or caring)
     whether they are talking to GCS or the local filesystem.
     """
-
+ 
 
 class Storage(Protocol):
     def put(self, key: str, data: bytes) -> str: ...
