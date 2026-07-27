@@ -57,10 +57,11 @@ from src.ingestion.enrichment.summarize_tables import summarize_tables
 from src.ingestion.extraction.image_extractor import extract_images
 from src.ingestion.enrichment.caption_images import caption_images
 from src.ingestion.chunking.side_chunks import table_to_chunk, image_to_chunk
-from src.ingestion.ports.storage import image_key
-from src.ingestion.models.chunk import Chunk, ChunkType
+from storage import image_key
 from src.ingestion.chunking.fallback_splitter import recursive_split
 from src.ingestion.chunking.token_estimate import estimate_tokens
+
+from contracts import Chunk, ChunkType
 
 log = logging.getLogger(__name__)
 
@@ -142,7 +143,7 @@ def _images_for_page(fpage, pageno, index, deps, user_id, doc_id, next_index):
         key = image_key(user_id, doc_id, image_id, img.ext)
         url = None
         try:
-            url = deps.storage.put(key, img.data)   # put() returns the locator
+            url = deps.storage.put(key=key, data=img.data, content_type=f"image/{img.ext}")   # put() returns the locator
         except Exception:
             log.warning("image store failed on page %s", pageno, exc_info=True)
             key = None
