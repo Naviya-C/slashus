@@ -34,7 +34,7 @@ func (r *PostgresUserRepository) FindByEmail(email string) (*models.User, error)
 		return nil, err
 	}
 	return &user, nil
-}
+} 
 
 func (r *PostgresUserRepository) FindByID(id uuid.UUID) (*models.User, error) {
 	var user models.User

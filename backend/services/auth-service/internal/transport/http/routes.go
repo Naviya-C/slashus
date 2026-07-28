@@ -32,6 +32,7 @@ func RegisterRoutes(
 	mux.HandleFunc("POST /api/v1/auth/login", authHandler.Login)
 	mux.HandleFunc("POST /api/v1/auth/refresh", authHandler.Refresh)
 	mux.HandleFunc("POST /api/v1/auth/logout", authHandler.Logout)
+	mux.HandleFunc("GET /api/v1/auth/me", authHandler.Me)
 
 	// --- protected: gateway injects X-User-Id from a verified token ---
 	mux.HandleFunc("POST /api/v1/auth/logout-all", authHandler.LogoutAll)

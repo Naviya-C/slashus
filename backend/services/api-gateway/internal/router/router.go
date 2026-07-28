@@ -58,18 +58,11 @@ func New(d Deps) (http.Handler, error) {
 	})
 
 	// ---- PUBLIC ------------------------------------------------------
-	// Must be reachable without a token — you cannot present a token before
-	// you have one. Listed individually rather than proxying the whole
-	// prefix, so a future admin route on the auth service is not exposed by
-	// accident.
+
 	mux.Handle("POST "+prefix+"/register", authProxy)
 	mux.Handle("POST "+prefix+"/login", authProxy)
 	mux.Handle("POST "+prefix+"/refresh", authProxy)
 
-	// Logout authenticates with the refresh cookie, not a bearer token — the
-	// auth service registers it as public for exactly that reason (see its
-	// routes.go). An expired access token must not block a user from ending
-	// their session, so this must NOT go through the protected group below.
 	mux.Handle("POST "+prefix+"/logout", authProxy)
 
 	// ---- PROTECTED ---------------------------------------------------
@@ -89,6 +82,9 @@ func New(d Deps) (http.Handler, error) {
 	// a full ingestion run.
 	mux.Handle("POST /uploads", protect(
 		d.Limiter.Limit("upload", d.Cfg.UploadLimit, d.Cfg.UploadWindow, uploadProxy)))
+
+	mux.Handle("GET /api/v1/user_documents", api(uploadProxy))
+	
 
 	mux.Handle("GET /jobs/{id}", api(ingestionProxy))
 

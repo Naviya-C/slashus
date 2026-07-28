@@ -18,8 +18,6 @@ import (
 type Config struct {
 	Port string
 
-	// --- token verification: set exactly one ---
-	//
 	// JWTSecret  -> HS256, shared secret. Matches the auth service as built.
 	// JWKSURL    -> RS256, public keys fetched from auth. Preferred long term:
 	//               the gateway can then verify but never MINT tokens.
