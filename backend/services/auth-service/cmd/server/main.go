@@ -94,6 +94,8 @@ func run(log *slog.Logger) error {
 	refreshUseCase := usecase.NewRefreshUseCase(userRepo, jwtService, log)
 	logoutUseCase := usecase.NewLogoutUseCase(userRepo, jwtService)
 
+	userProfileUseCase := usecase.NewProfileUseCase(userRepo)
+
 	// --- handlers -------------------------------------------------------
 	authHandler := handler.NewAuthHandler(
 		registerUsecase,
@@ -101,6 +103,7 @@ func run(log *slog.Logger) error {
 		refreshUseCase,
 		logoutUseCase,
 		cfg.RefreshTTL, // cookie expiry must match the DB expiry, so it is injected
+		userProfileUseCase,
 	)
 	jwksHandler := handler.NewJWKSHandler(keys)
 

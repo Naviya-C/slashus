@@ -26,12 +26,13 @@ const refreshCookieName = "refresh_token"
 const refreshCookiePath = "/api/v1/auth"
 
 type AuthHandler struct {
-	registerUseCase *usecase.RegisterUsecase
-	loginUseCase    *usecase.LoginUseCase
-	refreshUseCase  *usecase.RefreshUseCase
-	logoutUseCase   *usecase.LogoutUseCase
-	refreshTTL      time.Duration
-	secureCookies   bool
+	registerUseCase 		*usecase.RegisterUsecase
+	loginUseCase    		*usecase.LoginUseCase
+	refreshUseCase  		*usecase.RefreshUseCase
+	logoutUseCase   		*usecase.LogoutUseCase
+	refreshTTL      		time.Duration
+	secureCookies   		bool
+	userProfileUseCase		*usecase.ProfileUseCase
 }
 
 func NewAuthHandler(
@@ -40,6 +41,7 @@ func NewAuthHandler(
 	refreshUseCase *usecase.RefreshUseCase,
 	logoutUseCase *usecase.LogoutUseCase,
 	refreshTTL time.Duration,
+	userProfileUseCase	*usecase.ProfileUseCase,
 ) *AuthHandler {
 	return &AuthHandler{
 		registerUseCase: registerUsecase,
@@ -51,6 +53,8 @@ func NewAuthHandler(
 		// hardcoded false, so shipping does not depend on remembering to
 		// flip a constant.
 		secureCookies: os.Getenv("SECURE_COOKIES") != "false",
+		// This uses for profile detail fetch when login to dashboard '/me' endpoint
+		userProfileUseCase:	userProfileUseCase,
 	}
 }
 
@@ -224,4 +228,33 @@ func (h *AuthHandler) LogoutAll(w http.ResponseWriter, r *http.Request) {
 
 	h.clearRefreshCookie(w)
 	writeJSON(w, http.StatusOK, map[string]string{"message": "logged out of all devices"})
+}
+
+// This handler for user login and landing page handling mean /me router.
+
+func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
+	userID, err := uuid.Parse(r.Header.Get("X-User-Id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid user"})
+		return
+	}
+
+	user, err := h.userProfileUseCase.GetByID(userID)
+	if err != nil {
+		if errors.Is(err, usecase.ErrUserNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "something went wrong"})
+		return
+	}
+
+
+	writeJSON(w, http.StatusOK, dto.UserMe{
+		UserId:     user.ID,
+		FirstName: 	user.FirstName,
+		LastName:  	user.LastName,
+		Email:     	user.Email,
+		CreatedAt: 	user.CreatedAt,
+	})
 }
