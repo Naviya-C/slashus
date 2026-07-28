@@ -1,0 +1,13 @@
+[package]
+name = "piliwela"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "piliwela"
+crate-type = ["cdylib"]
+
+[dependencies] 
+pyo3 = { version = "0.26", features = ["extension-module"] }
+phf = { version = "0.11", features = ["macros"] }
+unicode-normalization = "0.1"
