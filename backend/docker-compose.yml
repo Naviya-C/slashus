@@ -1,7 +1,30 @@
 services:
 
   ########################################
-  # Redis — used by api-gateway for per-user rate limiting
+  # Caddy — TLS termination, the ONLY service published to the host.
+  # Obtains and renews a Let's Encrypt certificate for api.slashus.com
+  # automatically. Requires the DNS A record to resolve to this VM BEFORE
+  # first start, or the ACME challenge fails and Caddy retries in a loop.
+  ########################################
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    ports:
+      - "80:80"     # needed for the ACME HTTP challenge and the HTTPS redirect
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates live here. Without this volume Caddy re-requests a
+      # certificate on every restart and will hit Let's Encrypt's rate limit
+      # (5 per domain per week) surprisingly fast.
+      - ./data/caddy:/data
+      - ./data/caddy-config:/config
+    depends_on:
+      - api-gateway
+    restart: unless-stopped
+
+  ########################################
+  # Redis — gateway rate limiting (db 0) + auth login lockout (db 1)
   ########################################
   redis:
     image: redis:8-alpine
@@ -38,14 +61,22 @@ services:
     volumes:
       - ./data/kafka:/tmp/kraft-combined-logs
     healthcheck:
-      test: ["CMD", "/opt/kafka/bin/kafka-broker-api-versions.sh", "--bootstrap-server", "localhost:9092"]
-      interval: 15s
-      timeout: 10s
+      # CHANGED: was kafka-broker-api-versions.sh, which spawns a full JVM on
+      # every probe. On a small VM that cold start regularly exceeded the 10s
+      # timeout and the probe was killed before the broker could answer —
+      # which is what made `up` fail with "dependency kafka failed to start"
+      # even though the broker had logged "Kafka Server started".
+      # bash's /dev/tcp opens a socket with no process spawn: milliseconds.
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/9092'"]
+      interval: 10s
+      timeout: 5s
       retries: 10
+      # Gives the broker time to boot before failures start counting against
+      # the retry budget. Its absence was the other half of that failure.
+      start_period: 40s
     restart: unless-stopped
-    # NOTE: no `ports:` published to the host on purpose — only api-gateway
-    # needs to be reachable from outside the VM. Everything else talks over
-    # the internal compose network by service name.
+    # No `ports:` on purpose — only Caddy is reachable from outside the VM.
+    # Everything else talks over the internal compose network by service name.
 
   ########################################
   # Kafka topic initialization (runs once, then exits)
@@ -56,10 +87,6 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-    # FIX: the original wrapped this whole block in a literal pair of `"` characters
-    # left over from pasting a shell one-liner into a YAML block scalar. `sh -c`
-    # then received a script that opened a quote it never meaningfully closed and
-    # failed immediately, so no topics were ever created. Removed the stray quotes.
     command:
       - /bin/sh
       - -ec
@@ -71,33 +98,43 @@ services:
     restart: "no"
 
   ########################################
-  # Auth Service (Go) — talks to Neon (managed Postgres), mints RS256 tokens
+  # Auth Service (Go) — Neon Postgres, RS256 tokens
   ########################################
   auth-service:
-    build: 
+    build:
       context: ./services/auth-service
     container_name: auth-service
     env_file:
       - ./services/auth-service/.env
     environment:
-      # Login lockout is now implemented (Redis-backed, see
-      # internal/infrastructure/repository/redis_login_attempts.go). A
-      # separate DB index from the gateway's rate-limit counters, just to
-      # keep the two logically apart on the same Redis instance.
       REDIS_URL: redis://redis:6379/1
+    volumes:
+      # ADDED: the RSA signing key. Generate it once on the VM:
+      #   mkdir -p secrets
+      #   openssl genrsa -out secrets/jwt-private.pem 2048
+      #   chmod 600 secrets/jwt-private.pem
+      #
+      # And set an ABSOLUTE path in services/auth-service/.env:
+      #   JWT_PRIVATE_KEY_FILE=/etc/slashus/private.pem
+      #
+      # The crash was `./etc/slashus/private.pem` — the leading dot makes it
+      # relative to the container's working directory, where nothing exists.
+      #
+      # Back this file up. Losing it invalidates every outstanding token.
+      # It must never reach git; ./secrets/ is already gitignored.
+      - ./secrets/jwt-private.pem:/etc/slashus/private.pem:ro
     depends_on:
       redis:
         condition: service_healthy
     expose:
       - "8081"
     restart: unless-stopped
-    # No local `postgres` container: DATABASE_URL in .env already points at
-    # Neon (managed, external). A local postgres service here would start,
-    # pass its healthcheck, and never be talked to — pure wasted RAM on a
-    # small VM. Switch back to self-hosted Postgres only if you drop Neon.
+    # No local `postgres` container: DATABASE_URL points at Neon (managed,
+    # external). A local one would start, pass its healthcheck, and never be
+    # talked to — wasted RAM on a small VM.
 
   ########################################
-  # API Gateway (Go) — the ONLY service with a published host port
+  # API Gateway (Go) — now behind Caddy, not published to the host
   ########################################
   api-gateway:
     build:
@@ -106,30 +143,27 @@ services:
     env_file:
       - ./services/api-gateway/.env
     environment:
-      # FIX: REDIS_URL was never set anywhere (commented out in .env, and
-      # config.Load() hard-fails without it) — the gateway crash-looped on
-      # boot. Redis is the container's own service name on this network.
       REDIS_URL: redis://redis:6379/0
-      # FIX: these three all pointed at the wrong hostnames/ports (localhost,
-      # and made-up ports 8082/8083/8084). They must match the actual
-      # container_name and the actual port each service listens on.
       AUTH_URL: http://auth-service:8081
       UPLOAD_URL: http://upload-service:8002
-      # ingestion-service does not expose an HTTP API yet (see errors list) —
-      # this will 502 until src/ingestion/api/ is implemented. Left pointed
-      # at the right host so it starts working the moment that lands.
       INGESTION_URL: http://ingestion-service:8003
-      # agentic (the RAG/retrieval service) isn't part of this bundle at all.
-      # Left as a placeholder; /chat, /mark, /history will 502 until it's
-      # deployed and added to this compose file.
+      # The agentic (RAG/chat) service isn't in this repo yet, so
+      # /chat, /mark and /history will 502 until it's built and added here.
       AGENTIC_URL: http://agentic:8084
     depends_on:
       auth-service:
         condition: service_started
       redis:
         condition: service_healthy
-    ports:
-      - "8080:8080"
+    expose:
+      - "8080"
+    # CHANGED: was `ports: ["8080:8080"]`. Caddy reaches this over the internal
+    # compose network, so there's no reason to publish it to the host — and
+    # your firewall now only allows 80/443 anyway. Publishing it would leave a
+    # plaintext HTTP entrypoint bypassing TLS.
+    #
+    # To debug from inside the VM, use `docker compose exec` or temporarily
+    # re-add `ports: ["127.0.0.1:8080:8080"]` — bound to loopback only.
     restart: unless-stopped
 
   ########################################
@@ -139,11 +173,8 @@ services:
     build:
       context: .
       dockerfile: services/upload-service/Dockerfile
-      # FIX: this Dockerfile COPYs shared/contracts and shared/storage, which
-      # only exist under the repo root — not under services/upload-service.
-      # The original compose set `context: ./services/upload-service`, so
-      # every build of this image failed at the COPY step. Same fix applied
-      # to ingestion-service and embedding-service below.
+      # Context is the repo root because this Dockerfile COPYs
+      # shared/contracts and shared/storage, which live above the service dir.
     container_name: upload-service
     depends_on:
       kafka:
@@ -160,9 +191,13 @@ services:
     volumes:
       - ./data/uploads:/data/uploads
     restart: unless-stopped
+    # If this is still crash-looping: GOOGLE_APPLICATION_CREDENTIALS must be
+    # DELETED from services/upload-service/.env, not pointed at a path. The
+    # VM's attached service account supplies GCS credentials via the metadata
+    # server; that variable overrides it and looks for a file that isn't there.
 
   ########################################
-  # Ingestion Service (Python) — Kafka worker only, no HTTP server yet
+  # Ingestion Service (Python)
   ########################################
   ingestion-service:
     build:
@@ -192,13 +227,11 @@ services:
       retries: 5
       start_period: 20s
     restart: unless-stopped
-    # GET /health now answers on 8003 (see src/run_all.py) — this is liveness
-    # only. GET /jobs/{id} via the gateway still 502s: real job-status
-    # tracking is a separate feature that needs a shared store, not yet built
-    # (see the docstring in src/ingestion/api/main.py).
+    # /health is liveness only. GET /jobs/{id} via the gateway still 502s:
+    # job-status tracking needs a shared store and isn't built yet.
 
   ########################################
-  # Embedding Service (Python) — Kafka worker only, no HTTP server exists
+  # Embedding Service (Python) — SINGLE REPLICA ONLY
   ########################################
   embedding-service:
     build:
@@ -228,6 +261,5 @@ services:
       retries: 5
       start_period: 30s
     restart: unless-stopped
-    # RUN EXACTLY ONE replica of this — the sparse encoder writes a shared
-    # vocab file and is single-writer (see the Dockerfile's own comment).
-    # /health now answers on 8004 (see run_all.py); it does not probe Qdrant.
+    # Never scale past 1: the sparse encoder writes a shared vocab file and
+    # is single-writer. /health does not probe Qdrant.
