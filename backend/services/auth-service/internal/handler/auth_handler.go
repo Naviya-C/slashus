@@ -39,7 +39,6 @@ type AuthHandler struct {
 	refreshTTL      		time.Duration
 	secureCookies   		bool
 	// Remove in production
-	secureCookies   		bool
 	sameSite        		http.SameSite
 	
 	userProfileUseCase		*usecase.ProfileUseCase
