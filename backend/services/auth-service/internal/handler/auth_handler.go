@@ -15,15 +15,21 @@ import (
 
 // refreshCookieName is scoped to the auth path on purpose — see setRefreshCookie.
 const refreshCookieName = "refresh_token"
-
-// refreshCookiePath limits where the browser sends the refresh token.
-//
-// The original used Path: "/", which attaches the refresh token to EVERY
-// request to the domain — chat, uploads, everything. That is needless
-// exposure: any handler that logs headers, any proxy misconfiguration, any XSS
-// with cookie access now sees a 30-day credential. It only ever needs to reach
-// the refresh and logout endpoints.
 const refreshCookiePath = "/api/v1/auth"
+
+// Local dev only: the frontend runs on localhost while the API is on
+// api.slashus.com — different sites, so a Strict cookie is never sent and
+// refresh 401s forever. Production leaves this unset and keeps Strict.
+func sameSiteFromEnv() http.SameSite {
+	switch os.Getenv("COOKIE_SAMESITE") {
+	case "none":
+		return http.SameSiteNoneMode
+	case "lax":
+		return http.SameSiteLaxMode
+	default:
+		return http.SameSiteStrictMode
+	}
+}
 
 type AuthHandler struct {
 	registerUseCase 		*usecase.RegisterUsecase
@@ -32,7 +38,12 @@ type AuthHandler struct {
 	logoutUseCase   		*usecase.LogoutUseCase
 	refreshTTL      		time.Duration
 	secureCookies   		bool
+	// Remove in production
+	secureCookies   		bool
+	sameSite        		http.SameSite
+	
 	userProfileUseCase		*usecase.ProfileUseCase
+	
 }
 
 func NewAuthHandler(
@@ -49,12 +60,12 @@ func NewAuthHandler(
 		refreshUseCase:  refreshUseCase,
 		logoutUseCase:   logoutUseCase,
 		refreshTTL:      refreshTTL,
-		// Secure must be true in production. Driven by env rather than a
-		// hardcoded false, so shipping does not depend on remembering to
-		// flip a constant.
 		secureCookies: os.Getenv("SECURE_COOKIES") != "false",
 		// This uses for profile detail fetch when login to dashboard '/me' endpoint
 		userProfileUseCase:	userProfileUseCase,
+		// delete production
+		secureCookies: os.Getenv("SECURE_COOKIES") != "false",
+		sameSite:      sameSiteFromEnv(),
 	}
 }
 
@@ -94,7 +105,7 @@ func (h *AuthHandler) setRefreshCookie(w http.ResponseWriter, token string) {
 		MaxAge:   int(h.refreshTTL.Seconds()),
 		HttpOnly: true, // unreadable from JavaScript, so XSS cannot exfiltrate it
 		Secure:   h.secureCookies,
-		SameSite: http.SameSiteStrictMode, // not sent on cross-site requests: CSRF mitigation
+		SameSite: h.sameSite,//http.SameSiteStrictMode, // not sent on cross-site requests: CSRF mitigation
 		Path:     refreshCookiePath,
 	})
 }
@@ -110,7 +121,7 @@ func (h *AuthHandler) clearRefreshCookie(w http.ResponseWriter) {
 		MaxAge:   -1,
 		HttpOnly: true,
 		Secure:   h.secureCookies,
-		SameSite: http.SameSiteStrictMode,
+		SameSite: h.sameSite,//http.SameSiteStrictMode,
 		Path:     refreshCookiePath,
 	})
 }
