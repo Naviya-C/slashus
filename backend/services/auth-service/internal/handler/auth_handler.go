@@ -63,7 +63,6 @@ func NewAuthHandler(
 		// This uses for profile detail fetch when login to dashboard '/me' endpoint
 		userProfileUseCase:	userProfileUseCase,
 		// delete production
-		secureCookies: os.Getenv("SECURE_COOKIES") != "false",
 		sameSite:      sameSiteFromEnv(),
 	}
 }
