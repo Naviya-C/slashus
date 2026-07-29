@@ -126,7 +126,7 @@ async def upload(
     return {"doc_id": doc_id, "name": name, "status": "accepted"}
 
 
-@app.get("/user_documents", response_model=list[DocumentOut])
+@app.get("/api/v1/user_documents", response_model=list[DocumentOut])
 def user_documents(
     user_id: uuid.UUID = Depends(current_user),
     db: Session = Depends(get_db),
