@@ -148,7 +148,6 @@ def run() -> None:
     deps = default_deps(
         gemini_key=os.getenv("GEMINI_API_KEY"),
         storage=storage,
-        gcs_bucket=cfg.get("GCS_BUCKET"),
     )
 
     publisher = ChunkPublisher.from_env()
