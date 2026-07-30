@@ -54,8 +54,6 @@ from src.ingestion.config import load_env
 
 log = logging.getLogger(__name__)
 
-source_storage = create_store(os.getenv("SOURCE_BUCKET"))
-image_storage = create_store(os.getenv("IMAGE_BUCKET"))
 
 def _fully_scanned(chunks) -> bool:
     """
@@ -136,13 +134,14 @@ def run() -> None:
     logging.basicConfig(level=logging.INFO)
 
     cfg = load_env()
+    
+    source_storage = create_store(os.getenv("SOURCE_BUCKET"))
+    image_storage = create_store(os.getenv("IMAGE_BUCKET"))
 
     collection = os.getenv(
         "QDRANT_COLLECTION",
         "sinhala_books_v3",
     )
-
-    storage = create_store()
 
     deps = default_deps(
         gemini_key=os.getenv("GEMINI_API_KEY"),
