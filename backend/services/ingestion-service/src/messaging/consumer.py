@@ -54,6 +54,8 @@ from src.ingestion.config import load_env
 
 log = logging.getLogger(__name__)
 
+source_storage = create_store(os.getenv("SOURCE_BUCKET"))
+image_storage = create_store(os.getenv("IMAGE_BUCKET"))
 
 def _fully_scanned(chunks) -> bool:
     """
@@ -75,10 +77,7 @@ def _handle(
     collection: str,
 ) -> None:
 
-    log.info(
-        "received document: %s",
-        evt.doc_id,
-    )
+    log.info("received document: %s", evt.doc_id)
 
     data = storage.get(
         key=evt.storage_key,
@@ -147,20 +146,14 @@ def run() -> None:
 
     deps = default_deps(
         gemini_key=os.getenv("GEMINI_API_KEY"),
-        storage=storage,
+        storage=image_storage,
     )
 
     publisher = ChunkPublisher.from_env()
 
-    topic = os.getenv(
-        "UPLOAD_TOPIC",
-        "documents.uploaded",
-    )
+    topic = os.getenv("UPLOAD_TOPIC", "documents.uploaded")
 
-    group = os.getenv(
-        "INGESTION_GROUP",
-        "ingestion",
-    )
+    group = os.getenv("INGESTION_GROUP", "ingestion")
 
     bootstrap = os.getenv(
         "KAFKA_BOOTSTRAP_SERVERS",
@@ -187,9 +180,7 @@ def run() -> None:
     try:
 
         while True:
-
             msg = consumer.poll(1.0)
-
             if msg is None:
                 continue
 
@@ -229,7 +220,7 @@ def run() -> None:
                 #
                 _handle(
                     evt,
-                    storage=storage,
+                    storage=source_storage,
                     deps=deps,
                     publisher=publisher,
                     collection=collection,

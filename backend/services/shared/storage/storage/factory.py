@@ -20,7 +20,7 @@ from .gcs import GCSObjectStore
 from .local import LocalObjectStore
 
  
-def create_store() -> ObjectStore:
+def create_store(bucketName: str | None = None) -> ObjectStore:
     """
     Create and return the configured storage backend.
 
@@ -50,7 +50,7 @@ def create_store() -> ObjectStore:
             return LocalObjectStore(root)
 
         case "gcs":
-            bucket = os.environ["GCS_BUCKET"]
+            bucket = bucketName or os.environ["GCS_BUCKET"]
 
             return GCSObjectStore(bucket)
 
