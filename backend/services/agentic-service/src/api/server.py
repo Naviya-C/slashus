@@ -159,7 +159,7 @@ def chat(req: ChatRequest, user_id: UUID = Depends(current_user)):
         user_id, session.id, req.message, resp.reply,
         intent=resp.intent,
         citations=resp.citations or None,
-        practice_set_id=UUID(resp.practice_set_id) if resp.practice_set_id else None,
+        practice_set_id=UUID(str(resp.practice_set_id)) if resp.practice_set_id else None,
     )
     return resp.to_dict()
 
