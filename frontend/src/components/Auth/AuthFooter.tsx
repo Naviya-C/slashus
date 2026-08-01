@@ -1,16 +1,33 @@
+import illo from "../../assets/auth-illustration.svg";
+
 function AuthFooter(){
     return(
         <div
             className="
-                h-58
+                relative
+                h-[300px]
                 rounded-3xl
                 bg-gradient-to-br
                 from-indigo-600
                 via-violet-500
                 to-cyan-500
-                opacity-90
             "
-        />
+        >
+            <img
+                src={illo}
+                alt=""
+                className="
+                    absolute
+                    -bottom-16
+                    left-1/2
+                    -translate-x-1/2
+                    w-[175%]
+                    max-w-none
+                    pointer-events-none
+                    opacity-70
+                "
+            />
+        </div>
     );
 }
 

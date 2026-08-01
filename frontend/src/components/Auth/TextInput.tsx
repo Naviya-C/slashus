@@ -2,18 +2,30 @@ interface TextInputProps {
     id: string;
     label: string;
     type?: string;
+    value: string,
+    name: string,
+    required?: boolean,
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
 function TextInput({
     id,
     label,
-    type = "text"
+    type = "text",
+    name,
+    value,
+    required=false,
+    onChange
 }: TextInputProps) {
     return (
         <div className="relative">
             <input
                 id={id}
                 type={type}
+                name={name}
+                value={value}
+                required={required}
+                onChange={onChange}
                 placeholder=" "
                 className="
                     peer

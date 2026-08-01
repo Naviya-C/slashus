@@ -10,4 +10,24 @@ export default defineConfig({
     tailwindcss(),
     babel({ presets: [reactCompilerPreset()] })
   ],
+  server: {
+    port: 5176,
+    strictPort: true,
+    proxy: {
+      "/api": {
+        target: "https://api.slashus.com",
+        changeOrigin: true,
+        cookieDomainRewrite: "",
+        timeout:300000,
+        proxyTimeout: 300000,
+      },
+      "/uploads": {
+        target: "https://api.slashus.com",
+        changeOrigin: true,
+        cookieDomainRewrite: "",
+        timeout:300000,
+        proxyTimeout: 300000,
+      },
+    },
+  }
 })

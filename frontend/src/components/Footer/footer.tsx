@@ -1,26 +1,5 @@
 import Logo from "../Atomic/Logo";
 
-const LINKS = {
-  product: [
-    "features",
-    "auto_marking",
-    "document_qa",
-    "analytics",
-    "api",
-  ],
-  company: [
-    "about",
-    "blog",
-    "careers",
-    "contact",
-  ],
-  legal: [
-    "privacy",
-    "terms",
-    "security",
-  ],
-};
-
 export default function Footer() {
   return (
     <footer className="bg-[#09090f] px-8 py-14 text-white/35">
@@ -51,41 +30,46 @@ export default function Footer() {
           </div>
 
           {/* Columns */}
-          {Object.entries(LINKS).map(([col, items]) => (
-            <div key={col}>
-              <h4
-                className="
-                  mb-4
-                  text-[11px]
-                  font-bold
-                  uppercase
-                  tracking-[0.1em]
-                  text-white/50
-                "
-              >
-                {col}
-              </h4>
+          {
+            /*
+              {Object.entries(LINKS).map(([col, items]) => (
+              <div key={col}>
+                <h4
+                  className="
+                    mb-4
+                    text-[11px]
+                    font-bold
+                    uppercase
+                    tracking-[0.1em]
+                    text-white/50
+                  "
+                >
+                  {col}
+                </h4>
 
-              <ul className="flex flex-col gap-2">
-                {items.map((item) => (
-                  <li key={item}>
-                    <a
-                      href="#"
-                      className="
-                        text-sm
-                        text-white/30
-                        transition-colors
-                        duration-200
-                        hover:text-white/70
-                      "
-                    >
-                      {item}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+                <ul className="flex flex-col gap-2">
+                  {items.map((item) => (
+                    <li key={item}>
+                      <a
+                        href="#"
+                        className="
+                          text-sm
+                          text-white/30
+                          transition-colors
+                          duration-200
+                          hover:text-white/70
+                        "
+                      >
+                        {item}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+            */
+          }
+          
         </div>
 
         {/* Bottom */}

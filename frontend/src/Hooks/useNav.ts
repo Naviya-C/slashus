@@ -7,5 +7,6 @@ export function useNav() {
         goToLogin: () => navigate("/login"),
         goToRegister: () => navigate("/register"),
         goToHome: () => navigate("/"),
+        goToHow: () => navigate("/how")
     };
 }
