@@ -38,7 +38,7 @@ COPY services/embedding-service/embedding_service /app/embedding_service
 RUN mkdir -p /app/_store && useradd --create-home appuser && chown -R appuser /app/_store
 USER appuser
 
-EXPOSE 8004
+EXPOSE 8004 50051
 
 # One-time before first run (creates the Qdrant collection):
 #   python -m embedding_service.embedding.create_collection
