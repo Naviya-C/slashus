@@ -1,0 +1,123 @@
+syntax = "proto3";
+
+package slashus.search.v1;
+
+// Vector search, owned by embedding-service.
+//
+// embedding-service owns Qdrant, the BGE-M3 model, and the sparse vocab.
+// Nothing else touches them. Before this, agentic-service loaded its own copy
+// of BGE-M3 (~2.2 GB) and read the same vocab file from a second mount — two
+// models on an 8 GB VM, and a vocab that silently went stale in the reader
+// whenever ingest appended to it.
+//
+// Regenerate stubs after editing:
+//   python -m grpc_tools.protoc -I shared/proto \
+//       --python_out=<svc> --grpc_python_out=<svc> shared/proto/search.proto
+
+service VectorSearch {
+  // One search. Synchronous by design: a user is waiting on it, which is why
+  // this is gRPC and not a Kafka topic — request/response over a broker means
+  // reinventing correlation ids and timeouts.
+  rpc Search(SearchRequest) returns (SearchResponse);
+
+  // Raw vectors. Not used by retrieval today, but it makes the asymmetric
+  // embedding contract explicit rather than a convention two services
+  // independently remember to honour.
+  rpc Embed(EmbedRequest) returns (EmbedResponse);
+
+  // Liveness for the gRPC port specifically. An HTTP /health passing while
+  // the gRPC thread is dead is the exact failure that hides a broken service.
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+enum SearchMode {
+  SEARCH_MODE_HYBRID = 0;   // dense + sparse, RRF fused. Default.
+  SEARCH_MODE_DENSE = 1;
+  SEARCH_MODE_SPARSE = 2;
+}
+
+// Asymmetric by design: BGE-M3 embeds a document differently from a query,
+// and mixing them degrades retrieval in a way that produces no error. Making
+// it a required field means a caller cannot forget which side it is on.
+enum EmbedPurpose {
+  EMBED_PURPOSE_QUERY = 0;
+  EMBED_PURPOSE_DOCUMENT = 1;
+}
+
+message SearchRequest {
+  string query = 1;
+
+  // ALWAYS applied server-side. embedding-service owns Qdrant, so it enforces
+  // access to Qdrant — a caller passing user_id and hoping it is honoured is
+  // how one leaked query returns another user's chunks.
+  string user_id = 2;
+
+  // Empty = search everything this user owns. Populated = restrict to these.
+  // Sent as a list because Qdrant needs MatchAny; several MatchValue
+  // conditions on one key AND together and match nothing, silently.
+  repeated string doc_ids = 3;
+
+  int32 limit = 4;
+  SearchMode mode = 5;
+
+  // Selects the collection. Single-language today; the field exists so
+  // adding Tamil is a routing change inside embedding-service, not a
+  // protocol change.
+  string language = 6;
+}
+
+message Hit {
+  string chunk_id = 1;
+  float score = 2;
+  string content = 3;
+  string title = 4;
+  int32 page = 5;
+  string doc_id = 6;
+
+  // "semantic", "bm25", or "bm25+semantic" — which leg surfaced this hit.
+  string source = 7;
+
+  // Anything else on the Qdrant payload. A map rather than typed fields so
+  // adding a payload key does not require regenerating stubs in two services.
+  map<string, string> extra = 8;
+}
+
+message SearchResponse {
+  repeated Hit hits = 1;
+  string collection_used = 2;
+  string language_used = 3;
+
+  // Set when the user has no indexed chunks at all — distinct from a search
+  // that ran and matched nothing. The two need different messages: "upload a
+  // file" is useless to someone who has files.
+  bool user_has_no_documents = 4;
+}
+
+message EmbedRequest {
+  repeated string texts = 1;
+  EmbedPurpose purpose = 2;
+}
+
+message DenseVector {
+  repeated float values = 1;
+}
+
+message SparseVector {
+  repeated uint32 indices = 1;
+  repeated float values = 2;
+}
+
+message EmbedResponse {
+  repeated DenseVector dense = 1;
+  repeated SparseVector sparse = 2;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  bool ready = 1;
+  string detail = 2;
+  // Lets a caller detect vocab drift in logs rather than as gradually
+  // worsening retrieval with no error anywhere.
+  string vocab_hash = 3;
+}

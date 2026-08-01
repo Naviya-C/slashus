@@ -12,3 +12,5 @@ qdrant-client>=1.10,<2.0
 sentence-transformers>=3.0        # BGE-M3 via SentenceTransformer
 python-dotenv>=1.0,<2.0
 google-auth>=2.30,<3.0            # ADC token for Managed Kafka OAUTHBEARER (build_conf path)
+grpcio>=1.60
+grpcio-tools>=1.60

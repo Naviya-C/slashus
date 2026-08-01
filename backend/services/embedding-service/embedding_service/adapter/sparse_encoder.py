@@ -51,5 +51,19 @@ class SinhalaSparseEncoder:
         return [i for i, _ in pairs], [v for _, v in pairs]
 
     def save(self) -> None:
+        """Persist the vocab atomically.
+
+        write_text truncates the file before writing. A crash mid-write — or
+        two writers overlapping — leaves a truncated JSON file that fails to
+        parse on next load, and the encoder silently starts from an empty
+        vocab. Every subsequent query then matches nothing on the sparse leg,
+        with no error anywhere.
+
+        Write to a temp file in the same directory, then rename. Rename is
+        atomic on POSIX, so a reader sees either the old file or the new one,
+        never a half-written one.
+        """
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.write_text(json.dumps(self._vocab, ensure_ascii=False), encoding="utf-8")
+        tmp = self._path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(self._vocab, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(self._path)

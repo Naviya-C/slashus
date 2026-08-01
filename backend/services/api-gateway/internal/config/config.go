@@ -64,7 +64,7 @@ func Load() (*Config, error) {
 		AuthURL:      getenv("AUTH_URL", "http://auth:8081"),
 		UploadURL:    getenv("UPLOAD_URL", "http://upload:8082"),
 		IngestionURL: getenv("INGESTION_URL", "http://ingestion:8083"),
-		AgenticURL:   getenv("AGENTIC_URL", "http://agentic:8084"),
+		AgenticURL:   getenv("AGENTIC_URL", "http://agentic-service:8084"),
 
 		AuthPrefix: getenv("AUTH_PREFIX", "/api/v1/auth"),
 

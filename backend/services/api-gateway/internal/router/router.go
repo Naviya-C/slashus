@@ -88,7 +88,17 @@ func New(d Deps) (http.Handler, error) {
 
 	mux.Handle("GET /jobs/{id}", api(ingestionProxy))
 
-	for _, route := range []string{"POST /chat", "POST /mark", "GET /history"} {
+	// Paths are forwarded UNCHANGED, so these must match agentic-service's
+	// FastAPI routes exactly — including the /api/v1 prefix. A mismatch shows
+	// up as a 404 from the backend rather than from the gateway, which reads
+	// like the service is broken.
+	for _, route := range []string{
+		"POST /api/v1/chat",
+		"POST /api/v1/mark",
+		"GET /api/v1/sessions",
+		"GET /api/v1/sessions/{id}",
+		"GET /api/v1/practice/{id}",
+	} {
 		mux.Handle(route, api(agenticProxy))
 	}
 
