@@ -133,9 +133,7 @@ class GeneratorAgent(Agent):
                     previous="\n".join(f"- {q}" for q in previous) or "(none)",
                     sources=sources,
                 ),
-                # Higher than default: identical phrasing across five
-                # questions reads as mechanical, and low temperature on
-                # generation produces exactly that.
+
                 temperature=0.7,
             )
         except Exception:
@@ -171,7 +169,7 @@ class GeneratorAgent(Agent):
 
         ctx.put(
             questions=questions,
-            practice_set_id=str(practice_set_id),
+            practice_set_id=str(practice_set_id) if practice_set_id else None,
             artifact="questions",
         )
 

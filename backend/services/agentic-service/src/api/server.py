@@ -43,7 +43,7 @@ _repo = None
 def get_orchestrator() -> Orchestrator:
     global _orch
     if _orch is None:
-        _orch = Orchestrator()
+        _orch = Orchestrator(repo=get_repo())
     return _orch
 
 
