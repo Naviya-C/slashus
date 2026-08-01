@@ -45,15 +45,13 @@ class RetrievalAgent(Agent):
         understanding = self._understanding.understand(ctx.query)
         ctx.language = understanding.language
         plan = make_plan(understanding)
+        
+        # Code debuging purpose I add this after that remove
+        
+        logger.info("plan: budget=%d filters=%r query=%r",
+            plan.chunk_budget, plan.metadata_filters, understanding.normalized_query)
+        
 
-        # OWNERSHIP FILTERS, applied on top of whatever the planner produced.
-        #
-        # user_id is ALWAYS present. Qdrant has no concept of ownership — a
-        # query without it returns every user's chunks, and the payload
-        # carries user_id precisely so this can be enforced here.
-        #
-        # doc_id is added only when the user selected specific documents in
-        # the sidebar. Absent, retrieval spans everything they own.
         plan.metadata_filters["user_id"] = str(ctx.user_id)
         doc_ids = ctx.get("doc_ids", [])
         if doc_ids:

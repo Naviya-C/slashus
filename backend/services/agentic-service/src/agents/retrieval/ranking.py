@@ -45,19 +45,6 @@ Return ONLY JSON: {"ranking": ["id1", "id2", ...]}
 # ---------------------------------------------------------------------------
 
 def fuse_bm25(query: str, hits: list[SearchHit], *, weight: float = 0.4) -> list[SearchHit]:
-    """Rescore hits by fusing their existing order with a local BM25 ranking.
-
-    Dense retrieval finds chunks that MEAN the same thing; BM25 finds chunks
-    containing the same WORDS. For a study assistant these disagree in a way
-    that matters: a student asking about "ප්‍රභාසංශ්ලේෂණය" wants the passage
-    using that exact term, not a semantically adjacent paragraph about plants.
-    Dense alone tends to return the latter.
-
-    Reciprocal rank fusion rather than adding scores, because BM25 scores and
-    RRF scores live on completely different scales — adding them lets whichever
-    happens to be numerically larger dominate, and which one that is varies
-    per query.
-    """
     if len(hits) <= 1:
         return hits
 
