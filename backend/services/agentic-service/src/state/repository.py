@@ -39,7 +39,7 @@ class Repository:
     def __init__(self, session_factory) -> None:
         self._sf = session_factory
 
-    # ---------------------------------------------------------- sessions
+    # --------------------------sessions-------------------------------- 
 
     def list_sessions(
         self, user_id: UUID, limit: int = 20, cursor: datetime | None = None
@@ -54,8 +54,7 @@ class Repository:
                 select(ChatSession)
                 .where(ChatSession.user_id == user_id)
                 .order_by(ChatSession.last_message_at.desc())
-                # One extra row, purely to know whether a next page exists
-                # without a second COUNT query.
+
                 .limit(limit + 1)
             )
             if cursor is not None:
@@ -91,15 +90,9 @@ class Repository:
                 )
                 if s is not None:
                     return s
-                # Falls through to create. An unknown id from the client is
-                # more likely a stale tab than an attack, and starting a new
-                # session is friendlier than a 404 mid-conversation.
 
             s = ChatSession(
                 user_id=user_id,
-                # The first message IS the title. Cheap, and more useful than
-                # asking an LLM to name the thread — which costs a call and
-                # often produces something vaguer than the question itself.
                 title=first_message[:_TITLE_MAX],
                 doc_ids=doc_ids or [],
             )
@@ -108,7 +101,7 @@ class Repository:
             db.refresh(s)
             return s
 
-    # ---------------------------------------------------------- messages
+    # --------------------------messages-------------------------------- 
 
     def list_messages(
         self, user_id: UUID, session_id: UUID, limit: int = 30,
@@ -143,9 +136,7 @@ class Repository:
                         "practice_set_id": str(m.practice_set_id) if m.practice_set_id else None,
                         "created_at": m.created_at.isoformat(),
                     }
-                    # Reversed so the caller receives oldest-first for
-                    # rendering, while the QUERY stays newest-first so the
-                    # index and the cursor both work.
+
                     for m in reversed(rows)
                 ],
                 "next_cursor": rows[-1].created_at.isoformat() if has_more else None,
@@ -167,9 +158,7 @@ class Repository:
                 intent=intent, citations=citations,
                 practice_set_id=practice_set_id,
             ))
-            # Bumps the session to the top of the sidebar. Done in the same
-            # transaction so the list can never show a session whose newest
-            # message it does not yet have.
+
             db.execute(
                 ChatSession.__table__.update()
                 .where(ChatSession.id == session_id)
@@ -208,9 +197,8 @@ class Repository:
                 ))
 
             db.commit()
-            # Returns the UUID, not str(ps.id). The caller feeds this straight
-            # back into get_practice_set, and mixing types across that
-            # boundary is how a lookup silently returns None.
+            logger.info("saved practice set %r (%s)", ps.id, type(ps.id).__name__)
+
             return ps.id
 
     def get_practice_set(self, set_id: UUID, user_id: UUID) -> dict | None:
