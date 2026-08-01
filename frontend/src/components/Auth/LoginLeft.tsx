@@ -12,6 +12,7 @@ function LoginLeft(){
         <div
             className="
                 w-full
+                min-h-screen
                 bg-slate-950
                 text-white
                 flex
@@ -20,37 +21,37 @@ function LoginLeft(){
                 p-16
             "
             >
-                <div
-                    className="py-2"
+            <div
+                className="py-2"
+            >
+                <img
+                    onClick={goToHome}
+                    src={logo}
+                    alt="SLASHUS"
+                    className="w-30 mb-12 cursor-pointer"
+                />
+
+                <AuthHero />
+
+                <button
+                    className="
+                        mt-10
+                        px-6
+                        py-3
+                        rounded-xl
+                        bg-indigo-600
+                        hover:bg-indigo-700
+                        transition
+                        font-medium
+                        cursor-pointer
+                    "
                 >
-                    <img
-                        onClick={goToHome}
-                        src={logo}
-                        alt="SLASHUS"
-                        className="w-30 mb-12 cursor-pointer"
-                    />
-
-                    <AuthHero />
-
-                    <button
-                        className="
-                            mt-10
-                            px-6
-                            py-3
-                            rounded-xl
-                            bg-indigo-600
-                            hover:bg-indigo-700
-                            transition
-                            font-medium
-                            cursor-pointer
-                        "
-                    >
-                        Learn More
-                    </button>
-                </div>
-
-                <AuthFooter />
+                    Learn More
+                </button>
             </div>
+
+            <AuthFooter />
+        </div>
     );
 }
 

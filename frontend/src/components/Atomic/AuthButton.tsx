@@ -1,10 +1,14 @@
 interface AuthButtonProp{
     name: string
+    type?: "button" | "submit";
+    disabled?:boolean
 }
 
-function AuthButton({name}: AuthButtonProp){
+function AuthButton({name, type = "button", disabled = false}: AuthButtonProp){
     return(
         <button
+            type = {type}
+            disabled = {disabled}
             className="
                 mt-8
                 w-full
@@ -16,6 +20,8 @@ function AuthButton({name}: AuthButtonProp){
                 hover:bg-slate-800
                 transition
                 cursor-pointer
+                disabled:opacity-50
+                disabled:cursor-not-allowed
             "
         >
             {name}

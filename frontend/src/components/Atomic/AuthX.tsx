@@ -3,6 +3,7 @@ import { FaXTwitter } from "react-icons/fa6";
 function AuthX(){
     return(  
         <button
+            disabled
             className="
                 w-14
                 h-14
@@ -12,9 +13,10 @@ function AuthX(){
                 flex
                 items-center
                 justify-center
-                hover:bg-slate-50
                 transition
-                cursor-pointer
+                disabled:opacity-50
+                disabled:cursor-not-allowed
+                disabled:hover:bg-transparent
             "
         >
             <FaXTwitter

@@ -6,18 +6,20 @@ import NavButton from "../Atomic/NavButton";
 
 import { useNav } from "../../Hooks/useNav";
 
+
 function Navbar() {
     const scrolled = useNavScroll(20);
     const [menuOpen, setMenuOpen] = useState(false);
 
-    const { goToLogin } = useNav();
+    const { goToLogin, goToHow, goToHome} = useNav();
 
     const closeMenu = () => setMenuOpen(false);
 
     return (
         <>
             <nav
-                className={`
+                className={`4
+                    fixed top-0 left-0 right-0 z-50
                     mx-4 md:mx-10 lg:mx-40
                     mt-5
                     rounded-full
@@ -37,7 +39,7 @@ function Navbar() {
             >
                 <div className="flex items-center justify-between">
                     {/* Logo */}
-                    <button onClick={closeMenu}>
+                    <button onClick={goToHome} className="hover:cursor-pointer">
                         <Logo />
                     </button>
 
@@ -51,7 +53,7 @@ function Navbar() {
                         "
                     >
                         <li>
-                            <NavButton name="How Works" />
+                            <NavButton name="How Works" onClick={goToHow}/ >
 
                         </li>
 
