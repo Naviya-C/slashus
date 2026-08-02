@@ -1,5 +1,3 @@
-"""Deterministic plan: budget scales with question count + complexity."""
-
 from __future__ import annotations
 
 from core.config import settings
