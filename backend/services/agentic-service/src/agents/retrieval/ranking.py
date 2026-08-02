@@ -50,11 +50,8 @@ def fuse_bm25(query: str, hits: list[SearchHit], *, weight: float = 0.4) -> list
 
     ranked = BM25([h.content for h in hits]).score(query)
     if not ranked:
-        # No query term appears in any candidate. Nothing to fuse; the
-        # incoming ordering stands on its own.
         return hits
 
-    # The incoming order IS a ranking — position 0 is rank 1.
     fused: dict[str, float] = {
         h.chunk_id: (1 - weight) / (_RRF_K + rank)
         for rank, h in enumerate(hits, 1)
@@ -90,16 +87,11 @@ class Reranker:
             data = self._llm.generate_json(_RERANK.substitute(query=query, chunks=listing))
             order = [str(x) for x in data.get("ranking", [])]
         except Exception:
-            # Silent degradation: the caller paid for a rerank that did not
-            # happen, and nothing in the response says so. ERROR rather than
-            # WARNING for exactly that reason.
             logger.exception("rerank failed; keeping incoming order")
             return hits
 
         by_id = {h.chunk_id: h for h in hits}
         out = [by_id[i] for i in order if i in by_id]
-        # Anything the model omitted is appended, not dropped — a truncated
-        # ranking must not silently delete candidates.
         seen = {h.chunk_id for h in out}
         out.extend(h for h in hits if h.chunk_id not in seen)
         return out
@@ -117,19 +109,6 @@ def _jaccard(a: set[str], b: set[str]) -> float:
 
 def diversify(hits: list[SearchHit], limit: int, *,
               redundancy_threshold: float = 0.75) -> list[SearchHit]:
-    """Select up to `limit` hits, skipping near-duplicates.
-
-    The previous implementation hashed normalized content and skipped EXACT
-    matches. That misses the case that actually occurs: overlapping chunks
-    from a sliding window, sharing 80% of their text but differing at the
-    edges. Those hash differently, both survive, the LLM receives the same
-    passage twice, and the effective context budget silently halves.
-
-    Token-set Jaccard catches it. Deliberately not embedding-based MMR:
-    embedding every candidate costs a forward pass each, and windowed overlap
-    is lexical by construction — set overlap is both cheaper and more precise
-    for this specific problem.
-    """
     out: list[SearchHit] = []
     kept: list[set[str]] = []
 

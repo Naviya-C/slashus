@@ -171,17 +171,6 @@ def _is_title(info: LineInfo, all_sizes: list[float]) -> bool:
 
 
 class SectionIndex:
-    """Assigns a FLAT title to any item BY VERTICAL POSITION, not reading order.
-
-    Titles on the page are sorted top-to-bottom; an item at y_top gets the last
-    title at or above it, else the title carried in from the previous page (so a
-    lesson title spans its whole page run). Text blocks, tables and images share
-    this one lookup -- everything under a title is titled.
-
-    The "carry" between pages is just the last title string (no stack of parents),
-    which is the whole point: one level, no nesting, no mess.
-    """
-
     _TOL = 2.0  # a title covers items whose top is at/below it (small slack)
 
     def __init__(self, infos: list[LineInfo], carried_title: str | None = None):
@@ -192,11 +181,6 @@ class SectionIndex:
         self._events.sort(key=lambda e: e[0])
 
     def path_for(self, y_top: float) -> list[str]:
-        """Return the title for an item at y_top as a 0- or 1-element list.
-
-        A list keeps the Chunk.section_path type stable (join -> the title, or ""
-        when there is no title in scope).
-        """
         title = self._carried
         for hy, t in self._events:            # sorted by y ascending
             if hy <= y_top + self._TOL:
@@ -207,14 +191,10 @@ class SectionIndex:
 
     @property
     def final_stack(self) -> str | None:
-        """Last title on the page (or the carried one) to thread into the next page."""
         return self._events[-1][1] if self._events else self._carried
 
 
 def _merge_split_titles(infos: list[LineInfo]) -> None:
-    """Some lesson titles wrap onto two lines (same big size, stacked). Merge the
-    second line's text into the first and demote the second, so the title reads as
-    one string ("... v.lH iy" + "l¾u ldrl jdlH")."""
     titles = [i for i in infos if i.is_heading]
     titles.sort(key=lambda i: i.bbox[1])
     for a, b in zip(titles, titles[1:]):
@@ -232,13 +212,6 @@ def build_sections(
     lines: list[Line],
     carried_title: str | None = None,
 ) -> tuple[list[LineInfo], SectionIndex]:
-    """Classify lines into TITLE / body and build a flat, y-position SectionIndex.
-
-    `carried_title` is the last title from the previous page (a plain string or
-    None) so a lesson title spans page breaks. Returns (infos, index); the caller
-    assigns section via index.path_for(y) for text blocks, tables and images, and
-    threads index.final_stack into the next page.
-    """
     infos = [_line_info(line) for line in lines if line.text.strip()]
     if not infos:
         return [], SectionIndex([], carried_title)
