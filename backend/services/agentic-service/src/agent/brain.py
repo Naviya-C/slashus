@@ -36,6 +36,13 @@ from __future__ import annotations
 
 import logging
 
+from tenacity import (
+    retry,
+    retry_if_not_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
+
 from agent.decisions import (
     AnswerPlan,
     QuizPlan,
@@ -59,7 +66,24 @@ class Brain:
 
     # ------------------------------------------------------------------
 
+    # Two attempts, not three. A decision call sits on the critical path with
+    # a student waiting, and the failure this covers is a transient 429 or a
+    # truncated JSON body — both usually clear on the first retry. Anything
+    # that fails twice should fall through to the node's default rather than
+    # keep the student waiting another four seconds.
+    #
+    # KeyError is not retried: it means the prompt template is missing a
+    # variable, which no amount of retrying fixes.
+    @retry(
+        stop=stop_after_attempt(2),
+        wait=wait_exponential(multiplier=1, min=1, max=4),
+        retry=retry_if_not_exception_type((KeyError, FileNotFoundError)),
+        reraise=True,
+    )
     def _json(self, template: str, **values) -> dict:
+        # temperature 0 everywhere in here: extraction and classification have
+        # one right answer, and sampling only adds variance between identical
+        # requests. Generation is the exception and lives in tools/.
         return self._llm.generate_json(pool.render(template, **values), temperature=0.0)
 
     # ------------------------------------------------------------------
@@ -84,7 +108,9 @@ class Brain:
             return Understanding(route="answer", normalized_query=query,
                                  confidence=0.0, reasoning="llm unavailable")
 
-        u = Understanding.from_json(data, query)
+        u = Understanding.model_validate(data)
+        if not u.normalized_query:
+            u.normalized_query = query
 
         # "Normalize" is one word from "translate", and the model takes that
         # step often enough to matter: a Sinhala question comes back as fluent
@@ -98,8 +124,12 @@ class Brain:
 
     # ------------------------------------------------------------------
 
-    def plan_retrieval(self, understanding: Understanding, conversation,
+    def plan_retrieval(self, understanding, conversation,
                        retrieval, has_docs: bool) -> RetrievalPlan:
+        # `understanding` arrives as a dict from LangGraph state, which
+        # serialises models on the way to the checkpointer.
+        if isinstance(understanding, dict):
+            understanding = Understanding.model_validate(understanding)
         try:
             data = self._json(
                 "PLAN_RETRIEVAL",
@@ -116,7 +146,10 @@ class Brain:
             return RetrievalPlan(search_query=understanding.normalized_query,
                                  reasoning="llm unavailable")
 
-        return RetrievalPlan.from_json(data, understanding.normalized_query)
+        plan = RetrievalPlan.model_validate(data)
+        if not plan.search_query:
+            plan.search_query = understanding.normalized_query
+        return plan
 
     # ------------------------------------------------------------------
 
@@ -186,7 +219,7 @@ class Brain:
             return RetrievalVerdict(sufficient=True, confidence=0.0,
                                     reasoning="evaluator unavailable")
 
-        return RetrievalVerdict.from_json(data)
+        return RetrievalVerdict.model_validate(data)
 
     # ------------------------------------------------------------------
 
@@ -205,7 +238,7 @@ class Brain:
                            exc_info=True)
             return QuizPlan(reasoning="llm unavailable")
 
-        return QuizPlan.from_json(data)
+        return QuizPlan.model_validate(data)
 
     # ------------------------------------------------------------------
 
@@ -215,7 +248,32 @@ class Brain:
                               conversation=conversation.as_prompt_block())
         except Exception:
             return AnswerPlan(reasoning="llm unavailable")
-        return AnswerPlan.from_json(data)
+        return AnswerPlan.model_validate(data)
+
+    # ------------------------------------------------------------------
+
+    def greet(self, query: str, conversation) -> str:
+        """Reply to a greeting.
+
+        Generated rather than a constant, for one reason that matters: the
+        corpus and the students are Sinhala, and a hardcoded English sentence
+        is the wrong answer for most of them. It also lets the reply reference
+        what the conversation has already covered.
+        """
+        try:
+            data = self._json("GREET", query=query,
+                              conversation=conversation.as_prompt_block())
+            reply = str(data.get("reply", "")).strip()
+        except Exception:
+            logger.warning("greeting generation failed", exc_info=True)
+            reply = ""
+
+        # A blank chat bubble is worse than a generic sentence, so the
+        # fallback is unconditional rather than `query and "..."`.
+        return reply or (
+            "Hello. Ask me about anything in your uploaded documents — I can "
+            "explain it or make practice questions from it."
+        )
 
     # ------------------------------------------------------------------
 

@@ -27,25 +27,40 @@ corpus.
 
 ## Reasoning flow
 
+A **LangGraph `StateGraph`** (`src/agent/graph.py`). Every conditional edge is
+an LLM decision; every node is deterministic Python.
+
 ```
-load_memory          conversation + previous retrieval
-    ↓
-understand           intent, route, follow-up, clarification        [LLM]
-    ↓
-    ├─ clarify? ──→ ask, and stop. No search.
-    ↓
-plan_retrieval       search or reuse? what query? which lesson?     [LLM]
-    ↓
-retrieve             hybrid_search  |  reuse_previous_retrieval     [tool]
-    ↓
-evaluate             sufficient? missing what? next action?         [LLM]
-    │                       ↑
-    └─ rewrite / widen ─────┘   up to 3 attempts
-    ↓
-generate             plan_quiz or plan_answer, then generate        [LLM+tool]
-    ↓
-save_memory          retrieval snapshot + conversation summary
+START → load_memory → understand ─┬─ clarify ──────────→ save_memory → END
+                                  ├─ chat → small_talk → save_memory → END
+                                  └─ retrieve
+                                       ↓
+                                  plan_retrieval ─┬─ skip ──────→ plan_answer
+                                                  ├─ reuse ─┬─ ok → plan_answer
+                                                  │         └─ empty → retrieve
+                                                  ├─ resolve_lesson_title → retrieve
+                                                  └─ retrieve
+                                                        ↓
+                        ┌──── retry ────────────────  evaluate
+                        │                                ↓
+                        └──────────────────────────  _generate ─┬─ plan_quiz →
+                                                                │  generate_questions
+                                                                ├─ plan_answer →
+                                                                │  generate_answer
+                                                                └─ save_memory
+                                                                       ↓
+                                                                      END
 ```
+
+`src/agent/state.py` is the state schema. `steps`, `errors` and `tool_calls`
+carry `operator.add` reducers so they accumulate across nodes — without that,
+the last node to write would be the only one in the trace.
+
+**The checkpointer is the reason LangGraph is here.** `thread_id` is
+`user_id:session_id`, so state persists per conversation: a turn that dies
+mid-loop (a rate limit on the third rewrite, a container restart) resumes from
+the last completed node instead of re-running the search and the two decisions
+before it. Redis-backed when `REDIS_URL` is set, `MemorySaver` otherwise.
 
 Every decision is recorded with its timing and reasoning. `DEV_MODE=true`
 returns that trace on the response.
@@ -79,8 +94,11 @@ Sinhala has many.
 Three things, all safety rather than reasoning:
 
 - **Ownership.** `user_id` comes from the session, never from a decision.
-- **Budgets.** The loop stops after `MAX_TOOL_CALLS` whatever the brain says.
-  A decision that keeps returning "rewrite" would otherwise bill in a circle.
+- **Budgets.** Two independent brakes on the `route_after_evaluate` edge —
+  `MAX_RETRIEVAL_ATTEMPTS` and `MAX_TOOL_CALLS` — plus LangGraph's
+  `recursion_limit` as a third. A decision stuck on "rewrite" would otherwise
+  bill in a circle, and a routing bug could cycle without any decision being
+  wrong at all.
 - **Validation.** A generated MCQ with no correct answer is dropped. The
   database has a constraint for it, and an unmarkable question is otherwise
   discovered only after the student has written an answer.
@@ -153,14 +171,31 @@ than a missing dependency. `scripts/check.py` warns about it.
 PYTHONPATH=src python -m pytest tests/ -q
 ```
 
-33 tests, no Qdrant, no gRPC, no LLM. `tests/test_agent.py` runs the whole
-graph against a scripted LLM and a fake vector client that mimics Qdrant's
-hard-AND filtering.
+| file | needs | ran by author |
+|---|---|---|
+| `test_tools.py` | nothing | yes — 11 pass |
+| `test_routing.py` | nothing | yes — 17 pass |
+| `test_contracts.py` | nothing | yes — 11 pass |
+| `test_graph.py` | langgraph, pydantic | **no** |
+
+`test_graph.py` drives the compiled graph against a scripted LLM and a fake
+vector client that mimics Qdrant's hard-AND filtering. It could not be
+executed where it was written — langgraph, pydantic and tenacity were not
+installable there — so run it first and treat a failure as a bug in the code
+rather than in the test.
+
+`test_routing.py` covers the edges without the framework, because the edges
+hold the control flow and control-flow bugs are the ones that produce infinite
+loops and silent dead ends.
 
 ## Known gaps
 
-- No integration tests. Nothing has run against live Qdrant, Postgres or
-  DashScope.
+- No integration tests, and `tests/test_graph.py` has never been executed —
+  see the table above.
+- The Redis checkpointer path (`langgraph-checkpoint-redis`) is untested. If
+  `RedisSaver.from_conn_string` has a different shape in your installed
+  version, `_checkpointer()` falls back to `MemorySaver` and logs — which
+  works with one replica and silently loses threads with several.
 - Conversation summaries are rebuilt from Postgres on a cold cache, but the
   summary itself is lost — it is Redis-only. Recoverable, and it costs one
   turn of weaker follow-up resolution.

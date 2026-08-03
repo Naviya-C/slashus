@@ -5,7 +5,7 @@ failure modes — collapsing them into one store would mean the cheapest and
 most volatile (working memory) forces the durability guarantees of the most
 expensive (quiz history).
 
-    working       one graph run          in-process, dies with the request
+    working       one graph run          LangGraph state (agent/state.py)
     conversation  one session            Redis + Postgres
     retrieval     one session            Redis
     quiz          forever                Postgres
@@ -24,10 +24,8 @@ holds the durable copy so a cache eviction loses the summary, not the history.
 from memory.conversation import ConversationMemory, ConversationState
 from memory.retrieval import RetrievalMemory, RetrievalSnapshot
 from memory.store import MemoryStore, build_memory_store
-from memory.working import WorkingMemory
 
 __all__ = [
-    "WorkingMemory",
     "ConversationMemory", "ConversationState",
     "RetrievalMemory", "RetrievalSnapshot",
     "MemoryStore", "build_memory_store",

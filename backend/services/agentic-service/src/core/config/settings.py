@@ -62,8 +62,8 @@ class Settings:
     rrf_k: int = 60
 
     # --- Agent loop -------------------------------------------------------
-    # Hard ceiling on tool executions per turn, enforced by WorkingMemory
-    # rather than by the loop. The agent decides what to do next; it does not
+    # Hard ceiling on tool executions per turn, enforced on the graph edge
+    # (route_after_evaluate). The agent decides what to do next; it does not
     # get to decide how long it may keep deciding. A brain that keeps
     # returning "rewrite" would otherwise bill in a tight circle.
     max_tool_calls: int = 8
