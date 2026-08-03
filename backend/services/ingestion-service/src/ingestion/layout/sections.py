@@ -187,7 +187,7 @@ class SectionIndex:
                 title = t
             else:
                 break
-        return [" ".join(title.split())] if title else []
+        return [title] if title else []
 
     @property
     def final_stack(self) -> str | None:
@@ -203,7 +203,7 @@ def _merge_split_titles(infos: list[LineInfo]) -> None:
         same_size = abs(a.size - b.size) <= 0.6
         close = 0 <= (b.bbox[1] - a.bbox[3]) <= (b.bbox[3] - b.bbox[1]) * TITLE_MERGE_GAP
         if same_size and close:
-            a.text = " ".join(f"{a.text} {b.text}".split())
+            a.text = f"{a.text.strip()} {b.text.strip()}"
             b.is_heading = False
             b.level = 0
 

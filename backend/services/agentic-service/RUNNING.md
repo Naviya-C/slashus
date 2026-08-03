@@ -24,22 +24,14 @@ Fill in:
 | `GROQ_API_KEY` | console.groq.com |
 | `GROQ_MODEL` | **verify the exact string** in Groq's model list — `qwen-3.6-27b` is a guess |
 | `GEMINI_API_KEY` | you already have this |
-| `EMBEDDING_GRPC_URL` | `embedding-service:50051`, or `localhost:50051` running locally |
+| `QDRANT_URL`, `QDRANT_API_KEY`, `QDRANT_COLLECTION` | same values embedding-service uses |
 | `DATABASE_URL` | a **new** Neon database, not auth's or upload's |
 | `REDIS_URL` | `redis://localhost:6379/2` if running Redis locally |
 
-No Qdrant credentials here any more, and no `sparse_vocab.json` — embedding-
-service owns both and this service reaches them only over gRPC. If the vocab
-is missing, it is missing *there*, and `scripts/check.py` reports it via the
-vocab hash in the Health response.
-
-Optional retrieval flags, all with working defaults:
-
-| Variable | Default |
-|---|---|
-| `ENABLE_KEYWORD_EXTRACTION` | `true` |
-| `TITLE_STRATEGY` | `bm25` (`none` \| `bm25` \| `llm`) |
-| `TITLE_APPLY_AS` | `boost` (`boost` \| `filter`) |
+Copy `sparse_vocab.json` from the embedding service to the path in
+`SPARSE_VOCAB_PATH`. Without it, hybrid search degrades to dense-only —
+silently, so it looks like a retrieval quality problem rather than a missing
+file.
 
 ## 3. Migrate
 
@@ -63,7 +55,7 @@ Expected output when everything is right:
 ```
 --- config ---
   ok   environment — required vars present
-  ok   settings — model=qwen3.6-plus, rerank=False, title=bm25/boost
+  ok   settings — model=qwen-3.6-27b, rerank=False
 
 --- code ---
   ok   prompt templates — 6 templates render
@@ -72,21 +64,11 @@ Expected output when everything is right:
 
 --- services ---
   ok   postgres — 5 tables present
-  ok   embedding-service — ok (vocab 4f2a9c1b8e07)
-  ok   ListTitles — 23 titles, 1432 chunks
-  ok   qwen — responded ('OK')
+  ok   qdrant — sinhala_books_v3, 1432 points
+  ok   groq — responded ('OK')
   ok   redis — reachable
-
-all checks passed (0 warnings).
+  ok   sparse vocab — ./_store/sparse_vocab.json
 ```
-
-Set `CHECK_USER_ID` to a real user id to exercise `ListTitles`; without it
-that check is skipped with a warning. Exit code is 1 if anything failed, so
-this can gate a deploy.
-
-Note it probes embedding-service's **gRPC** port, not its HTTP `/health`.
-The HTTP probe can pass while the gRPC thread is dead, and that combination
-is exactly what makes chat hang with nothing in the logs.
 
 ## 5. Start
 
@@ -166,14 +148,6 @@ another document.
 Expect: `not_in_source`.
 Proves: `doc_id` filtering with `MatchAny`.
 
-**10. Filter recovery** — set `TITLE_APPLY_AS=filter`, then ask about a lesson
-using slightly different wording from its stored title.
-Expect: an answer, plus `zero hits under content filters ['lesson_title'] —
-dropping them and retrying` in the log.
-Proves: the recovery path. Before it, this exact case returned "your documents
-don't cover this" while the lesson sat in the index. Worth running at least
-once, because it is the failure mode that produces no error anywhere.
-
 ---
 
 ## Where things break first
@@ -189,12 +163,6 @@ that file name the exact reason.
 **Empty retrieval on a user who does have documents.** Usually the payload
 field names — this code filters on `user_id` and `doc_id`, matching your
 payload. If yours differs, `agents/retrieval/agent.py` is where to change it.
-
-**Sparse leg silently dead.** Look at `dense/sparse=` in the retrieve log
-line. `12/0` means the sparse leg returned nothing, which is almost always a
-missing or stale `sparse_vocab.json` in embedding-service rather than a hard
-query. Hybrid degrades to dense-only with no error on either side; results
-merely get slightly worse.
 
 **Sinhala intent misrouting.** Log every routing decision and look at the
 `method` field: `embedding` means the classifier was confident, `llm` means it

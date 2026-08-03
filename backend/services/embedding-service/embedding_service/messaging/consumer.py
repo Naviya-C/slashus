@@ -54,6 +54,13 @@ log = logging.getLogger(__name__)
 
 
 def build_deps(cfg=None) -> EmbedDeps:
+    """Construct the shared dependencies.
+
+    Public and callable with no arguments so run_all.py can build ONE instance
+    and hand it to both the consumer and the gRPC server. Two instances would
+    mean two BGE-M3 models (~2.2 GB each) in one process, and two views of the
+    sparse vocab — the reader's going stale the moment ingest appends a term.
+    """
     cfg = cfg or load_env()
     return EmbedDeps(
         dense=LocalEmbedder(),
@@ -92,6 +99,8 @@ def run(deps: EmbedDeps | None = None) -> None:
 
     logging.basicConfig(level=logging.INFO)
 
+    # Accepts pre-built deps so the model is loaded once per process. Falls
+    # back to building its own when run standalone.
     deps = deps or build_deps()
 
     consumer = Consumer(
