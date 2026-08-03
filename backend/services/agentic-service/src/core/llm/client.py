@@ -51,6 +51,27 @@ def extract_json(text: str) -> dict[str, Any]:
     raise ValueError(f"No valid JSON in LLM response: {text[:200]!r}")
 
 
+def json_call(llm, prompt: str, *, temperature: float = 0.0) -> dict[str, Any]:
+    """Call generate_json on whichever client was injected.
+
+    QwenClient takes a keyword-only `temperature`; LLMClient (Gemini) does
+    not. Every retrieval call site wants temperature 0 — extraction and
+    classification have one right answer and sampling only adds variance — but
+    hardcoding the kwarg makes those call sites crash on a Gemini client, and
+    omitting it silently samples at 0.3 on Qwen.
+
+    Try the kwarg, fall back on TypeError. Narrow on purpose: a TypeError
+    raised from INSIDE the LLM call would be swallowed by a bare except and
+    retried at the wrong temperature.
+    """
+    try:
+        return llm.generate_json(prompt, temperature=temperature)
+    except TypeError as exc:
+        if "temperature" not in str(exc):
+            raise
+        return llm.generate_json(prompt)
+
+
 class LLMClient:
     def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
         self.model = model or settings.gemini_model
