@@ -1,6 +1,6 @@
 import illo from "../../assets/auth-illustration.svg";
 
-function AuthFooter(){
+const AuthFooter = () => {
     return(
         <div
             className="

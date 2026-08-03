@@ -1,6 +1,6 @@
 import { FaFacebookF } from "react-icons/fa";
 
-function AuthFB(){
+const AuthFB = () => {
     return(
         <button
             disabled

@@ -1,6 +1,6 @@
 import { FcGoogle } from "react-icons/fc";
 
-function AuthGl(){
+const AuthGl = () => {
     return(
         <button
             className="
@@ -21,5 +21,6 @@ function AuthGl(){
         </button>
     );
 }
+
 
 export default AuthGl;

@@ -1,6 +1,7 @@
 import { FaXTwitter } from "react-icons/fa6";
 
-function AuthX(){
+
+const AuthX = () => {
     return(  
         <button
             disabled
@@ -26,5 +27,6 @@ function AuthX(){
         </button>
     );
 }
+
 
 export default AuthX;

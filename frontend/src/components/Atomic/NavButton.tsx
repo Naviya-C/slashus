@@ -1,13 +1,12 @@
-// Atomic/NavButton.tsx
-type Props = {
+interface NavProp {
   name: string;
   onClick?: () => void;
 };
 
-function NavButton({ name, onClick }: Props) {
+const NavButton = (prop: NavProp) => {
   return (
     <button
-      onClick={onClick}
+      onClick={prop.onClick}
       className="
         relative inline-flex flex-col items-center
         text-gray-700 hover:text-black
@@ -17,7 +16,7 @@ function NavButton({ name, onClick }: Props) {
     >
       {/* visible label */}
       <span className="font-normal hover:font-bold peer">
-        {name}
+        {prop.name}
       </span>
 
       {/* invisible bold twin — locks the width */}
@@ -29,10 +28,12 @@ function NavButton({ name, onClick }: Props) {
           select-none pointer-events-none
         "
       >
-        {name}
+        {prop.name}
       </span>
     </button>
   );
 }
+
+
 
 export default NavButton;

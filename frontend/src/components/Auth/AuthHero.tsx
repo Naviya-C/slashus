@@ -1,4 +1,4 @@
-function AuthHero(){
+const AuthHero =() => {
     return(
         <>
             <h1

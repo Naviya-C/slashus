@@ -4,11 +4,11 @@ interface AuthButtonProp{
     disabled?:boolean
 }
 
-function AuthButton({name, type = "button", disabled = false}: AuthButtonProp){
+const AuthButton = (props: AuthButtonProp) => {
     return(
         <button
-            type = {type}
-            disabled = {disabled}
+            type = {props.type}
+            disabled = {props.disabled}
             className="
                 mt-8
                 w-full
@@ -24,9 +24,10 @@ function AuthButton({name, type = "button", disabled = false}: AuthButtonProp){
                 disabled:cursor-not-allowed
             "
         >
-            {name}
+            {props.name}
         </button>
     );
 }
+
 
 export default AuthButton;

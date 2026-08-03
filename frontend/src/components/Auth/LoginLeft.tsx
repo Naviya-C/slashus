@@ -4,8 +4,7 @@ import logo from "../../assets/logo_black.svg";
 import { useNav } from "../../Hooks/useNav";
 
 
-function LoginLeft(){
-
+const LoginLeft = () => {
     const {goToHome} = useNav();
 
     return(

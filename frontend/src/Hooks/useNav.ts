@@ -1,12 +1,13 @@
 import { useNavigate } from "react-router-dom";
 
-export function useNav() {
+export const useNav = () => {
     const navigate = useNavigate();
 
     return {
         goToLogin: () => navigate("/login"),
         goToRegister: () => navigate("/register"),
         goToHome: () => navigate("/"),
-        goToHow: () => navigate("/how")
+        goToHow: () => navigate("/how"),
+        goToChat: () => navigate("/chat")
     };
 }

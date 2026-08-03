@@ -2,30 +2,18 @@ interface TextInputProps {
     id: string;
     label: string;
     type?: string;
-    value: string,
     name: string,
     required?: boolean,
-    onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
-function TextInput({
-    id,
-    label,
-    type = "text",
-    name,
-    value,
-    required=false,
-    onChange
-}: TextInputProps) {
+const TextInput = (props: TextInputProps) => {
     return (
         <div className="relative">
             <input
-                id={id}
-                type={type}
-                name={name}
-                value={value}
-                required={required}
-                onChange={onChange}
+                id={props.id}
+                type={props.type}
+                name={props.name}
+                required={props.required}
                 placeholder=" "
                 className="
                     peer
@@ -43,7 +31,7 @@ function TextInput({
             />
 
             <label
-                htmlFor={id}
+                htmlFor={props.id}
                 className="
                     absolute
                     left-3
@@ -62,10 +50,12 @@ function TextInput({
                     peer-[:not(:placeholder-shown)]:text-xs
                 "
             >
-                {label}
+                {props.label}
             </label>
         </div>
     );
 }
+
+
 
 export default TextInput;
