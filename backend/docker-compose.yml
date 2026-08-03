@@ -1,27 +1,4 @@
-# Slashus backend.
-#
-# MEMORY BUDGET (8 GB VM)
-# -----------------------
-# Every service has an explicit mem_limit. Without one, Docker lets any
-# container consume everything and the kernel OOM killer picks its victim by
-# memory-use score — which is BGE-M3, not whatever caused the spike. A large
-# PDF ingest could kill Caddy and take the whole site down.
-#
-#   embedding-service  3.0G   BGE-M3 (~2.2G) + Qdrant client + Kafka consumer
-#   kafka              1.0G   JVM heap capped to 512m below
-#   ingestion-service  1.0G   PyMuPDF and Tesseract are memory-hungry per page
-#   agentic-service    768M   no model any more — FastAPI + LangGraph only
-#   upload-service     512M
-#   auth / gateway     256M   small Go binaries
-#   redis / caddy      256M
-#                     ------
-#                      ~7.0G, leaving ~1G for the host and Docker itself.
-
 services:
-
-  ########################################
-  # Caddy — TLS, the ONLY service published to the host
-  ########################################
   caddy:
     image: caddy:2-alpine
     container_name: caddy
@@ -30,8 +7,6 @@ services:
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      # Certificates. Without this volume Caddy re-requests on every restart
-      # and hits Let's Encrypt's rate limit (5/domain/week) surprisingly fast.
       - ./data/caddy:/data
       - ./data/caddy-config:/config
     depends_on:
@@ -39,16 +14,10 @@ services:
     mem_limit: 256m
     restart: unless-stopped
 
-  ########################################
-  # Redis — gateway rate limits (0), auth lockout (1), agentic scratch (3)
-  ########################################
   redis:
     image: redis:8-alpine
     container_name: redis
-    # maxmemory + LRU rather than unbounded: agentic scratch and preflight
-    # caches are all disposable, so evicting the oldest is strictly better
-    # than growing until the OOM killer picks something else to kill.
-    command: ["redis-server", "--maxmemory", "192mb", "--maxmemory-policy", "allkeys-lru"]
+    command: ["redis-server", "--maxmemory", "384mb", "--maxmemory-policy", "allkeys-lru"]
     volumes:
       - ./data/redis:/data
     healthcheck:
@@ -56,12 +25,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-    mem_limit: 256m
+    mem_limit: 512m
     restart: unless-stopped
 
-  ########################################
-  # Kafka (KRaft, single node)
-  ########################################
   kafka:
     image: apache/kafka:4.1.0
     container_name: kafka
@@ -79,21 +45,12 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
-      # Default heap sizing assumes a dedicated broker machine. On a shared
-      # 8 GB VM it will take 2 GB it does not need.
       KAFKA_HEAP_OPTS: "-Xmx512m -Xms512m"
-      # Without retention, log segments grow until the disk fills — and a full
-      # disk takes down every service at once, not just Kafka.
       KAFKA_LOG_RETENTION_HOURS: 168
       KAFKA_LOG_RETENTION_BYTES: 1073741824
     volumes:
       - ./data/kafka:/tmp/kraft-combined-logs
     healthcheck:
-      # bash /dev/tcp opens a socket with no process spawn. The previous probe
-      # ran kafka-broker-api-versions.sh, which starts a full JVM — on a small
-      # VM that cold start regularly exceeded the timeout and the probe was
-      # killed before the broker could answer, so `up` failed with "dependency
-      # kafka failed to start" even though the broker had logged "started".
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/9092'"]
       interval: 10s
       timeout: 5s
@@ -102,9 +59,6 @@ services:
     mem_limit: 1g
     restart: unless-stopped
 
-  ########################################
-  # Kafka topic initialization (runs once, exits)
-  ########################################
   kafka-setup:
     image: apache/kafka:4.1.0
     container_name: kafka-setup
@@ -120,9 +74,6 @@ services:
           /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list
     restart: "no"
 
-  ########################################
-  # Auth Service (Go) — Neon Postgres, RS256 tokens
-  ########################################
   auth-service:
     build:
       context: ./services/auth-service
@@ -132,12 +83,6 @@ services:
     environment:
       REDIS_URL: redis://redis:6379/1
     volumes:
-      # Generate once on the VM:
-      #   mkdir -p secrets
-      #   openssl genrsa -out secrets/jwt-private.pem 2048
-      #   chmod 644 secrets/jwt-private.pem
-      # Use an ABSOLUTE path in .env: JWT_PRIVATE_KEY_FILE=/etc/slashus/private.pem
-      # Back it up — losing it invalidates every outstanding token.
       - ./secrets/jwt-private.pem:/etc/slashus/private.pem:ro
     depends_on:
       redis:
@@ -147,9 +92,6 @@ services:
     mem_limit: 256m
     restart: unless-stopped
 
-  ########################################
-  # API Gateway (Go) — behind Caddy, not published
-  ########################################
   api-gateway:
     build:
       context: ./services/api-gateway
@@ -172,9 +114,6 @@ services:
     mem_limit: 256m
     restart: unless-stopped
 
-  ########################################
-  # Upload Service (Python/FastAPI)
-  ########################################
   upload-service:
     build:
       context: .
@@ -196,13 +135,7 @@ services:
       - ./data/uploads:/data/uploads
     mem_limit: 512m
     restart: unless-stopped
-    # GOOGLE_APPLICATION_CREDENTIALS must be ABSENT from .env — the VM's
-    # attached service account supplies GCS credentials via the metadata
-    # server, and that variable overrides it with a file that isn't there.
 
-  ########################################
-  # Ingestion Service (Python)
-  ########################################
   ingestion-service:
     build:
       context: .
@@ -233,10 +166,6 @@ services:
     mem_limit: 1g
     restart: unless-stopped
 
-  ########################################
-  # Embedding Service — OWNS Qdrant, BGE-M3 and the sparse vocab.
-  # SINGLE REPLICA ONLY: the sparse encoder is single-writer.
-  ########################################
   embedding-service:
     build:
       context: .
@@ -260,7 +189,7 @@ services:
       - ./data/huggingface:/home/appuser/.cache/huggingface
     expose:
       - "8004"    # health
-      - "50051"   # gRPC search
+      - "50051"   # gRPC search + ListTitles
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health', timeout=3)"]
       interval: 15s
@@ -269,16 +198,19 @@ services:
       # BGE-M3 is ~2 GB and loads before anything answers.
       start_period: 120s
     mem_limit: 3g
-    # One core, not both. Ingest embedding would otherwise saturate the VM and
-    # a search arriving mid-batch waits seconds behind it — the user sees a
-    # spinner that looks broken. Ingestion getting slower is invisible.
     cpus: "1.0"
     restart: unless-stopped
 
-  ########################################
-  # Agentic Service — retrieval loop, generation, marking.
-  # No model, no Qdrant client: search goes over gRPC.
-  ########################################
+  agentic-migrate:
+    build:
+      context: ./services/agentic-service
+    container_name: agentic-migrate
+    env_file:
+      - ./services/agentic-service/.env
+    command: ["alembic", "-c", "database/alembic.ini", "upgrade", "head"]
+    mem_limit: 256m
+    restart: "no"
+
   agentic-service:
     build:
       context: ./services/agentic-service
@@ -288,11 +220,15 @@ services:
         condition: service_healthy
       embedding-service:
         condition: service_healthy
+      agentic-migrate:
+        condition: service_completed_successfully
     env_file:
       - ./services/agentic-service/.env
     environment:
       REDIS_URL: redis://redis:6379/3
       EMBEDDING_GRPC_URL: embedding-service:50051
+      MAX_TOOL_CALLS: "8"
+      DEV_MODE: "false"
     expose:
       - "8084"
     healthcheck:
@@ -301,6 +237,5 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
-    # 768m, down from the 3g this needed when it loaded its own BGE-M3.
     mem_limit: 768m
     restart: unless-stopped

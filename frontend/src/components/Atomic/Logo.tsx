@@ -1,7 +1,7 @@
 import logo from '../../assets/logo_black.svg'
 
 
-function Logo(){
+const Logo = () => {
     return(
         <div className="flex items-center gap-2">
             <img 
@@ -15,5 +15,6 @@ function Logo(){
         </div>
     );
 }
+
 
 export default Logo;

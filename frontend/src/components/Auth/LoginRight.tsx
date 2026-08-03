@@ -1,44 +1,32 @@
+import { useActionState } from "react";
 import AuthButton from "../Atomic/AuthButton";
 import OAuth from "./OAuth";
 import TextInput from "./TextInput";
 
 import { useNav } from "../../Hooks/useNav";
-import { useState } from "react";
-
 import { useAuth } from "../../context/AuthContext";
-import { useNavigate } from "react-router-dom";
 
-
-function LoginRight(){
-
-    const {goToRegister} = useNav();
-
-    const [email, setEmail] = useState("")
-    const [password, setPassword] = useState("")
-
-
+const LoginRight = () => {
     const { login } = useAuth();
-    const navigate = useNavigate();
-    const [error, setError] = useState("");
-    const [busy, setBusy] = useState(false);
+    const { goToRegister, goToChat } = useNav();
 
-    console.log(email, password)
+    const [error, formAction, isBusy] = useActionState(
+        async (_prevState: string | null, formData: FormData) => {
+            const email = formData.get("email") as string;
+            const password = formData.get("password") as string;
 
-    async function handleSubmit(e: React.FormEvent) {
-        e.preventDefault();           // without this the page reloads and you lose everything
-        setBusy(true);
-        setError("");
-        try {
-            await login(email, password);
-            navigate("/chat");     // whatever your post-login route is
-        } catch (err) {
-            setError(err instanceof Error ? err.message : "Login failed");
-        } finally {
-            setBusy(false);
-        }
-        }
+            try {
+                await login(email, password);
+                goToChat();    
+                return null; // Clear any existing errors on success
+            } catch (err) {
+                return err instanceof Error ? err.message : "Login failed";
+            }
+        },
+        null // Initial error state is null
+    );
 
-    return(
+    return (
         <div
             className="
                 w-full
@@ -69,55 +57,35 @@ function LoginRight(){
                 {/* Divider */}
                 <div className="flex items-center mb-8">
                     <div className="flex-1 border-t border-slate-300" />
-
-                    <span
-                        className="
-                            px-4
-                            text-sm
-                            text-slate-500
-                        "
-                    >
+                    <span className="px-4 text-sm text-slate-500">
                         or sign in with email
                     </span>
-
                     <div className="flex-1 border-t border-slate-300" />
                 </div>
 
-                <form onSubmit={handleSubmit}>
-                    {/* Email */}
+                <form action={formAction}>
                     <TextInput 
                         id="email"
                         label="Email"   
                         type="email" 
                         name="email"
-                        value={email}
                         required
-                        onChange={(e) => setEmail(e.target.value)}
                     />
                     <br/>
-                    {/* Password */}
                     <TextInput 
                         id="pword"
                         label="Password"
                         type="password"
                         name="password"
-                        value={password}
                         required
-                        onChange={(e) => setPassword(e.target.value)}
                     />
                     
-                    {/* Login */}
                     {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
-                    <AuthButton name={busy ? "Loging..." : "Login"} type="submit" disabled={busy} />
+                    
+                    <AuthButton name={isBusy ? "Logging in..." : "Login"} type="submit" disabled={isBusy} />
                 </form>
 
-                <p
-                    className="
-                        mt-8
-                        text-center
-                        text-slate-500
-                    "
-                >
+                <p className="mt-8 text-center text-slate-500">
                     Don't have an account?{" "}
                     <button
                         onClick={goToRegister}

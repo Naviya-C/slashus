@@ -107,6 +107,14 @@ def chat(req: ChatRequest, user_id: UUID = Depends(current_user)):
         doc_ids=req.doc_ids,
     )
 
+<<<<<<< HEAD
+    state = get_agent().run(
+        query=req.message, user_id=user_id, session_id=session_id,
+        doc_ids=[str(d) for d in req.doc_ids],
+    )
+
+    resp = _shape(state, session_id)
+=======
     result = get_orchestrator().run(
         req.message,
         user_id=user_id,
@@ -154,6 +162,7 @@ def chat(req: ChatRequest, user_id: UUID = Depends(current_user)):
             intent=result.get("intent", ""),
             citations=data.get("citations", []),
         )
+>>>>>>> main
 
     repo.add_turn(
         user_id, session.id, req.message, resp.reply,
@@ -164,7 +173,66 @@ def chat(req: ChatRequest, user_id: UUID = Depends(current_user)):
     return resp.to_dict()
 
 
+<<<<<<< HEAD
+def _shape(state: dict, session_id: str) -> ChatResponse:
+    """Final graph state -> wire response.
+
+    One place decides the render flags, so `kind`, `mode`,
+    `is_question_generation` and `render_target` cannot disagree with each
+    other — which they would within a week if each branch set them by hand.
+    """
+    trace = state.get("steps", []) if settings.dev_mode else []
+    errors = state.get("errors", [])
+
+    if state.get("clarification"):
+        return ChatResponse.for_clarification(
+            session_id, state["clarification"], intent="clarify",
+            trace=trace, errors=errors)
+
+    reason = state.get("reason")
+    if reason and not state.get("questions") and not state.get("answer"):
+        resp = blocked(session_id, Reason(reason))
+        resp.trace = trace
+        resp.errors = errors
+        return resp
+
+    if state.get("questions"):
+        plan = state.get("quiz_plan", {})
+        return ChatResponse.for_questions(
+            session_id,
+            reply=f"Generated {len(state['questions'])} "
+                  f"{plan.get('difficulty', '')} questions.".replace("  ", " "),
+            intent=state.get("route", ""),
+            practice_set_id=state.get("practice_set_id"),
+            questions=[
+                Question(
+                    id=q.get("id", ""), type=q["qtype"], question=q["question"],
+                    options=q.get("options", []),
+                    correct_index=q.get("correct_index"),
+                    explanation=q.get("explanation"),
+                    max_marks=q.get("max_marks", 10),
+                    source_pages=q.get("source_pages", []),
+                    difficulty=plan.get("difficulty", "medium"),
+                    bloom_level=plan.get("bloom_level", ""),
+                )
+                for q in state["questions"]
+            ],
+            trace=trace, errors=errors,
+        )
+
+    return ChatResponse.for_message(
+        session_id, reply=state.get("answer", ""),
+        intent=state.get("route", ""),
+        citations=state.get("citations", []),
+        reason=Reason(reason) if reason == "not_in_source" else None,
+        trace=trace, errors=errors,
+    )
+
+
+# ----------------------------mark-----------------------------------------
+=======
 # ---------------------------mark------------------------------------------ 
+>>>>>>> main
 
 @api.post("/api/v1/mark")
 def mark(req: MarkRequest, user_id: UUID = Depends(current_user)):
@@ -175,14 +243,36 @@ def mark(req: MarkRequest, user_id: UUID = Depends(current_user)):
     it through intent classification would risk misreading a submission as
     conversation, and there is no ambiguity to resolve.
     """
+<<<<<<< HEAD
+    state = get_agent().run(
+        query="mark", user_id=user_id, session_id=str(req.session_id),
+        submission=[s.model_dump() for s in req.submission],
+=======
     ctx = AgentContext(
         query="mark",
         user_id=user_id,
         session_id=str(req.session_id),
         data={"submission": [s.model_dump() for s in req.submission]},
+>>>>>>> main
     )
     MarkerAgent(repo=get_repo()).run(ctx)
 
+<<<<<<< HEAD
+    results = state.get("results", [])
+    if not results:
+        raise HTTPException(400, "nothing to mark")
+
+    total = round(sum(r["marks"] for r in results), 1)
+    out_of = sum(r["max_marks"] for r in results)
+
+    return ChatResponse.for_marking(
+        str(req.session_id),
+        reply=f"Graded: {total}/{out_of}.",
+        intent="mark",
+        results=[QuestionResult(**r) for r in results],
+        total_marks=total, total_max=out_of,
+        trace=state.get("steps", []) if settings.dev_mode else [],
+=======
     if ctx.errors:
         raise HTTPException(400, "nothing to mark")
 
@@ -195,6 +285,7 @@ def mark(req: MarkRequest, user_id: UUID = Depends(current_user)):
         results=[QuestionResult(**r) for r in results],
         total_marks=ctx.get("total_marks"),
         total_max=ctx.get("total_max"),
+>>>>>>> main
     ).to_dict()
 
 

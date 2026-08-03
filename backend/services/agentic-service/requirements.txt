@@ -1,8 +1,28 @@
 # LLM — Qwen via Alibaba Model Studio
 dashscope>=1.20
 
+<<<<<<< HEAD
+# Orchestration — the agent flow is a LangGraph StateGraph (agent/graph.py).
+# The checkpointer is what earns it: state is persisted per session thread, so
+# a turn that crashes mid-loop resumes instead of restarting, and conversation
+# state survives without being hand-rolled into Redis.
+langgraph>=0.2.60
+langgraph-checkpoint>=2.0
+# Redis-backed checkpointer. Falls back to MemorySaver when REDIS_URL is unset,
+# which is fine for one replica and wrong for several.
+langgraph-checkpoint-redis>=0.0.5
+
+# Retries with backoff for LLM and gRPC calls, instead of hand-rolled sleep
+# loops that each get the jitter subtly different.
+tenacity>=8.2
+
+# Structured LLM output. Decision schemas are pydantic models with coercing
+# validators — see agent/decisions.py for why they coerce rather than raise.
+pydantic>=2.6
+=======
 # Orchestration
 langgraph>=0.2
+>>>>>>> main
 
 # Vector search — gRPC to embedding-service. No torch, no
 # sentence-transformers, no qdrant-client: embedding-service owns all three.

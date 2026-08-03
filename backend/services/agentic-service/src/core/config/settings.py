@@ -55,7 +55,29 @@ class Settings:
         default_factory=lambda: _get("EMBEDDING_GRPC_URL", default="embedding-service:50051"))
 
     # --- Retrieval tuning ------------------------------------------------
+<<<<<<< HEAD
+    # Ceiling on the budget the agent's retrieval plan may ask for. The plan
+    # decides how much material this request needs; this decides how much it
+    # is allowed to want.
+    max_chunk_budget: int = 40
+    rrf_k: int = 60
+
+    # --- Agent loop -------------------------------------------------------
+    # Hard ceiling on tool executions per turn, enforced on the graph edge
+    # (route_after_evaluate). The agent decides what to do next; it does not
+    # get to decide how long it may keep deciding. A brain that keeps
+    # returning "rewrite" would otherwise bill in a tight circle.
+    max_tool_calls: int = 8
+
+    # Retrieve/evaluate cycles. Three covers search -> rewrite -> search ->
+    # widen -> search. Beyond that the evaluator is looping rather than
+    # converging, and the student has waited several seconds per cycle.
+    max_retrieval_attempts: int = 3
+
+    # Chunks fetched per search before de-duplication trims to budget.
+=======
     max_chunk_budget: int = 300
+>>>>>>> main
     overfetch_factor: float = 2.0
     rrf_k: int = 60
     max_retries: int = 3
