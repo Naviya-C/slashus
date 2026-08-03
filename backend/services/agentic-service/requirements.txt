@@ -1,13 +1,20 @@
 # LLM — Qwen via Alibaba Model Studio
 dashscope>=1.20
 
-# Orchestration
-langgraph>=0.2
+# No orchestration framework. The agent's flow is linear with one loop
+# (agent/graph.py) — LangGraph earns its complexity when there is real
+# branching, parallelism or cross-step persistence, and here it would add a
+# framework and a state schema to express `for attempt in range(3)`.
+# The nodes are written as single-purpose methods over WorkingMemory, so
+# lifting them into LangGraph later is mechanical if the flow grows branches.
 
 # Vector search — gRPC to embedding-service. No torch, no
 # sentence-transformers, no qdrant-client: embedding-service owns all three.
 grpcio>=1.60
 protobuf>=4.25
+# grpcio-tools is NOT here: stubs are checked in, and regenerating them is a
+# development action. `pip install grpcio-tools` before running
+# scripts/gen_proto.sh.
 
 # Persistence
 sqlalchemy>=2.0
@@ -22,6 +29,7 @@ uvicorn>=0.29
 python-dotenv>=1.0
 
 # test harness only
+pytest>=8.0
 streamlit>=1.35
 requests>=2.31
 

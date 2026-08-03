@@ -2,15 +2,36 @@
 src/api/server.py
 =================
 
-    POST /chat              question, generation, or conversation
-    POST /mark              grade a submission
-    GET  /sessions          sidebar list (keyset paginated)
-    GET  /sessions/{id}     one session's messages (keyset paginated)
-    GET  /practice/{id}     restore a practice set with its answers
+    POST /api/v1/chat              the agent — explain, generate, clarify
+    POST /api/v1/mark              grade a submission
+    GET  /api/v1/sessions          sidebar list (keyset paginated)
+    GET  /api/v1/sessions/{id}     one session's messages (keyset paginated)
+    GET  /api/v1/sessions/{id}/memory   what the agent remembers  [NEW]
+    GET  /api/v1/practice/{id}     restore a practice set with its answers
     GET  /health
 
 Identity comes from X-User-Id, injected by the api-gateway from a verified
 token. This service is only reachable through the gateway.
+
+WHAT CHANGED FOR THE FRONTEND
+-----------------------------
+Every /chat and /mark response now carries three render flags that are always
+present, never stripped:
+
+    mode                    "normal" | "question_generation" | "marking"
+                            | "clarification" | "blocked"
+    is_question_generation  bool — open the practice panel
+    render_target           "chat" | "practice_panel"
+
+`kind` is unchanged and still correct, so existing frontend code keeps
+working. The flags exist because branching on `kind == "questions"` is a
+string comparison repeated at every call site that breaks silently the day a
+fifth kind appears — and `clarification` is that fifth kind.
+
+`kind: "clarification"` is new: the agent decided the request was too vague to
+act on and is asking back. It renders in chat like a message, but it is not an
+answer, and treating it as one would put an unanswered question into the
+session summary as though it were resolved.
 """
 
 from __future__ import annotations
@@ -22,11 +43,14 @@ from uuid import UUID
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from agents import AgentContext
-from agents.marker import MarkerAgent
-from api.contracts import ChatResponse, Kind, Question, QuestionResult, Reason, blocked
-
-from orchestrator import Orchestrator
+from api.contracts import (
+    ChatResponse,
+    Question,
+    QuestionResult,
+    Reason,
+    blocked,
+)
+from core.config import settings
 
 logging.basicConfig(
     level=logging.INFO,
@@ -36,15 +60,9 @@ logger = logging.getLogger(__name__)
 
 api = FastAPI(title="Slashus Agentic Service")
 
-_orch: Orchestrator | None = None
+_agent = None
 _repo = None
-
-
-def get_orchestrator() -> Orchestrator:
-    global _orch
-    if _orch is None:
-        _orch = Orchestrator(repo=get_repo())
-    return _orch
+_memory = None
 
 
 def get_repo():
@@ -56,16 +74,58 @@ def get_repo():
     return _repo
 
 
+def get_agent():
+    """Built once, lazily.
+
+    Lazily because constructing it opens a gRPC channel and reads config, and
+    doing that at import time makes the module unimportable in a test or a
+    preflight script that has no embedding-service.
+    """
+    global _agent, _memory
+    if _agent is None:
+        from agent import build_agent
+        from core.llm import QwenClient
+        from memory import build_memory_store
+        from services import GenerationService, MarkingService
+        from state.scratch import Scratch
+        from vectorstore import build_vector_client
+
+        repo = get_repo()
+        llm = QwenClient()
+        scratch = Scratch(_redis())
+        _memory = build_memory_store(scratch, repo)
+        _agent = build_agent(
+            vector_client=build_vector_client(),
+            repo=repo,
+            llm=llm,
+            scratch=scratch,
+            generator=GenerationService(llm, repo),
+            marker=MarkingService(llm, repo),
+        )
+    return _agent
+
+
+def _redis():
+    if not settings.redis_url:
+        # Scratch falls back to a process-local dict. Fine for one replica;
+        # with several, a follow-up can land on a replica that never saw the
+        # previous turn and the agent loses its memory mid-conversation.
+        logger.warning("REDIS_URL unset — agent memory is per-process only")
+        return None
+    try:
+        import redis
+        return redis.from_url(settings.redis_url, decode_responses=True)
+    except Exception:
+        logger.warning("redis unavailable; agent memory is per-process only",
+                       exc_info=True)
+        return None
+
+
 def current_user(x_user_id: UUID = Header(..., alias="X-User-Id")) -> UUID:
     return x_user_id
 
 
 def _cursor(value: str | None) -> datetime | None:
-    """Parse an ISO cursor, treating anything malformed as absent.
-
-    Rejecting a bad cursor with a 400 would break a client mid-scroll for no
-    benefit; returning page one is recoverable.
-    """
     if not value:
         return None
     try:
@@ -75,7 +135,7 @@ def _cursor(value: str | None) -> datetime | None:
         return None
 
 
-# ------------------------schemas------------------------------------------ 
+# --------------------------schemas----------------------------------------
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000)
@@ -94,66 +154,24 @@ class MarkRequest(BaseModel):
     submission: list[SubmissionItem] = Field(..., min_length=1)
 
 
-# --------------------------chat------------------------------------------- 
+# ----------------------------chat-----------------------------------------
 
 @api.post("/api/v1/chat")
 def chat(req: ChatRequest, user_id: UUID = Depends(current_user)):
     repo = get_repo()
 
     session = repo.get_or_create_session(
-        user_id=user_id,
-        session_id=req.session_id,
-        first_message=req.message,
-        doc_ids=req.doc_ids,
+        user_id=user_id, session_id=req.session_id,
+        first_message=req.message, doc_ids=req.doc_ids,
     )
+    session_id = str(session.id)
 
-    result = get_orchestrator().run(
-        req.message,
-        user_id=user_id,
-        session_id=str(session.id),
+    wm = get_agent().run(
+        query=req.message, user_id=user_id, session_id=session_id,
         doc_ids=[str(d) for d in req.doc_ids],
     )
 
-    reason = result.get("reason")
-    if reason:
-        resp = blocked(str(session.id), Reason(reason))
-        repo.add_turn(
-            user_id, session.id, req.message, resp.reply, intent=result.get("intent")
-        )
-        return resp.to_dict()
-
-    data = result.get("data", {})
-    questions = data.get("questions", [])
-
-    if questions:
-        resp = ChatResponse(
-            session_id=str(session.id),
-            kind=Kind.QUESTIONS,
-            reply=result.get("reply", f"Generated {len(questions)} questions."),
-            intent=result.get("intent", ""),
-            practice_set_id=data.get("practice_set_id"),
-            questions=[
-                Question(
-                    id=q.get("id", ""),
-                    type=q["qtype"],
-                    question=q["question"],
-                    options=q.get("options", []),
-                    correct_index=q.get("correct_index"),
-                    explanation=q.get("explanation"),
-                    max_marks=q.get("max_marks", 10),
-                    source_pages=q.get("source_pages", []),
-                )
-                for q in questions
-            ],
-        )
-    else:
-        resp = ChatResponse(
-            session_id=str(session.id),
-            kind=Kind.MESSAGE,
-            reply=result.get("reply", ""),
-            intent=result.get("intent", ""),
-            citations=data.get("citations", []),
-        )
+    resp = _shape(wm, session_id)
 
     repo.add_turn(
         user_id, session.id, req.message, resp.reply,
@@ -164,41 +182,91 @@ def chat(req: ChatRequest, user_id: UUID = Depends(current_user)):
     return resp.to_dict()
 
 
-# ---------------------------mark------------------------------------------ 
+def _shape(wm, session_id: str) -> ChatResponse:
+    """WorkingMemory -> wire response.
+
+    One place decides the render flags, so `kind`, `mode`,
+    `is_question_generation` and `render_target` cannot disagree with each
+    other — which they would within a week if each branch set them by hand.
+    """
+    trace = wm.trace() if settings.dev_mode else []
+
+    if wm.clarification:
+        return ChatResponse.for_clarification(
+            session_id, wm.clarification, intent="clarify",
+            trace=trace, errors=wm.errors)
+
+    if wm.reason and not wm.questions and not wm.answer:
+        resp = blocked(session_id, Reason(wm.reason))
+        resp.trace = trace
+        resp.errors = wm.errors
+        return resp
+
+    if wm.questions:
+        plan = wm.quiz_plan
+        return ChatResponse.for_questions(
+            session_id,
+            reply=f"Generated {len(wm.questions)} {plan.get('difficulty', '')} "
+                  f"questions.".replace("  ", " "),
+            intent=wm.route,
+            practice_set_id=wm.practice_set_id,
+            questions=[
+                Question(
+                    id=q.get("id", ""), type=q["qtype"], question=q["question"],
+                    options=q.get("options", []),
+                    correct_index=q.get("correct_index"),
+                    explanation=q.get("explanation"),
+                    max_marks=q.get("max_marks", 10),
+                    source_pages=q.get("source_pages", []),
+                    difficulty=plan.get("difficulty", "medium"),
+                    bloom_level=plan.get("bloom_level", ""),
+                )
+                for q in wm.questions
+            ],
+            trace=trace, errors=wm.errors,
+        )
+
+    return ChatResponse.for_message(
+        session_id, reply=wm.answer, intent=wm.route,
+        citations=wm.citations,
+        reason=Reason(wm.reason) if wm.reason == "not_in_source" else None,
+        trace=trace, errors=wm.errors,
+    )
+
+
+# ----------------------------mark-----------------------------------------
 
 @api.post("/api/v1/mark")
 def mark(req: MarkRequest, user_id: UUID = Depends(current_user)):
     """Grade a submission.
 
-    A separate endpoint rather than a /chat intent: the client already knows
-    this is a marking action because the user pressed Mark, not Send. Routing
-    it through intent classification would risk misreading a submission as
-    conversation, and there is no ambiguity to resolve.
+    Still a separate endpoint, and still deliberately NOT routed through the
+    agent's understanding step: the client knows this is marking because the
+    student pressed Mark, not Send. There is no intent to infer, and inferring
+    one adds an LLM call plus a failure mode to a path with no ambiguity.
     """
-    ctx = AgentContext(
-        query="mark",
-        user_id=user_id,
-        session_id=str(req.session_id),
-        data={"submission": [s.model_dump() for s in req.submission]},
+    wm = get_agent().run(
+        query="mark", user_id=user_id, session_id=str(req.session_id),
+        submission=[s.model_dump() for s in req.submission],
     )
-    MarkerAgent(repo=get_repo()).run(ctx)
 
-    if ctx.errors:
+    if not wm.results:
         raise HTTPException(400, "nothing to mark")
 
-    results = ctx.get("results", [])
-    return ChatResponse(
-        session_id=str(req.session_id),
-        kind=Kind.MARKING,
-        reply=f"Graded: {ctx.get('total_marks')}/{ctx.get('total_max')}.",
+    total = round(sum(r["marks"] for r in wm.results), 1)
+    out_of = sum(r["max_marks"] for r in wm.results)
+
+    return ChatResponse.for_marking(
+        str(req.session_id),
+        reply=f"Graded: {total}/{out_of}.",
         intent="mark",
-        results=[QuestionResult(**r) for r in results],
-        total_marks=ctx.get("total_marks"),
-        total_max=ctx.get("total_max"),
+        results=[QuestionResult(**r) for r in wm.results],
+        total_marks=total, total_max=out_of,
+        trace=wm.trace() if settings.dev_mode else [],
     ).to_dict()
 
 
-# -------------------------sessions---------------------------------------- 
+# --------------------------sessions---------------------------------------
 
 @api.get("/api/v1/sessions")
 def sessions(
@@ -219,6 +287,40 @@ def session_messages(
     return get_repo().list_messages(
         user_id, session_id, limit=limit, cursor=_cursor(cursor)
     )
+
+
+@api.get("/api/v1/sessions/{session_id}/memory")
+def session_memory(session_id: UUID, user_id: UUID = Depends(current_user)):
+    """What the agent currently remembers about this session.
+
+    NEW. Exists because agent memory is otherwise invisible: when a follow-up
+    is answered from the wrong material, the question is always "what did it
+    think the topic was" — and without this the only way to find out is to
+    read Redis by hand.
+
+    Returns the summary, the active topic, learned preferences, and a
+    DESCRIPTION of the cached retrieval. Never the chunk text: those are
+    copyrighted passages, and this endpoint would otherwise be a way to
+    extract the corpus a session at a time.
+    """
+    get_agent()   # ensures _memory is built
+    loaded = _memory.load(user_id, str(session_id))
+    return {
+        "session_id": str(session_id),
+        "conversation": {
+            "summary": loaded.conversation.summary,
+            "active_topic": loaded.conversation.active_topic,
+            "preferences": loaded.conversation.preferences,
+            "turn_count": loaded.conversation.turn_count,
+        },
+        "retrieval": {
+            "description": loaded.retrieval.describe(),
+            "query": loaded.retrieval.query,
+            "keywords": loaded.retrieval.keywords,
+            "lesson_titles": loaded.retrieval.lesson_titles,
+            "chunk_count": len(loaded.retrieval.chunks),
+        },
+    }
 
 
 @api.get("/api/v1/practice/{set_id}")

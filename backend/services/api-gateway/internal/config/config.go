@@ -1,8 +1,3 @@
-// Package config loads gateway settings from the environment.
-//
-// Backends are URLs rather than compile-time constants, so services can be
-// deployed one at a time: a backend that is not up yet returns 502 on its own
-// routes while everything else keeps working.
 package config
 
 import (
@@ -79,10 +74,7 @@ func Load() (*Config, error) {
 		ProxyTimeout: getenvDuration("PROXY_TIMEOUT", 5*time.Minute),
 	}
 
-	// Fail closed on ambiguous or absent verification config. A gateway that
-	// starts without knowing how to verify tokens is worse than one that
-	// refuses to start: it would have to either reject everything or, worse,
-	// let requests through unchecked.
+
 	switch {
 	case cfg.JWTSecret == "" && cfg.JWKSURL == "":
 		return nil, fmt.Errorf("set JWT_SECRET (HS256) or JWKS_URL (RS256)")
