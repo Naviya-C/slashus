@@ -63,10 +63,3 @@ PREVIOUS QUESTIONS (avoid these):
 
 SOURCE:
 {{sources}}
-
-DIFFICULTY: {{difficulty}}
-
-`easy` asks the student to restate. `medium` asks them to explain or compare.
-`hard` asks them to apply or evaluate. The rubric must stay checkable against
-the source at every level — a criterion the source cannot settle is one the
-marker will get wrong.

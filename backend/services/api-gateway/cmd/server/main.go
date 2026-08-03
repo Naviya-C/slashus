@@ -1,3 +1,20 @@
+// Command server runs the API gateway.
+//
+// It is the ONLY publicly reachable service. Its job:
+//
+//	verify the token -> inject X-User-Id -> strip Authorization -> route
+//
+// Everything behind it trusts X-User-Id completely. That is safe only while
+// backends are unreachable from outside — in docker-compose, that means no
+// `ports:` entry on any service except this one. Publish agentic's port and
+// anyone can send X-User-Id: <victim> and read another user's data.
+//
+//	GET  /health
+//	POST /auth/login|register|refresh   public
+//	GET  /auth/me, POST /auth/logout    protected
+//	POST /documents                     protected, upload-limited
+//	GET  /jobs/{id}                     protected
+//	POST /chat, /mark, GET /history     protected
 package main
 
 import (
@@ -32,6 +49,10 @@ func run(log *slog.Logger) error {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Build the verifier. Failing here is correct: a gateway that cannot
+	// verify tokens must not accept traffic, because the only alternative is
+	// letting requests through unchecked.
 	var verifier *auth.Verifier
 	if cfg.UseJWKS() {
 		verifier, err = auth.NewJWKSVerifier(ctx, cfg.JWKSURL, cfg.Issuer, cfg.Audience)
@@ -62,6 +83,9 @@ func run(log *slog.Logger) error {
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,
 		Handler: handler,
+		// No WriteTimeout: uploads and LLM generation are legitimately slow,
+		// and a write deadline would cut them off mid-response. ReadHeader
+		// still guards against a client that connects and never sends headers.
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       90 * time.Second,
 	}

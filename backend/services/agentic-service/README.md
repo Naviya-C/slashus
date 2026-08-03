@@ -1,5 +1,6 @@
 # Agentic Service
 
+<<<<<<< HEAD
 The reasoning half of the Slashus study assistant. It decides; tools execute.
 
 Two services changed in this rebase — this one and `embedding-service`. The
@@ -106,71 +107,65 @@ Three things, all safety rather than reasoning:
 Plus one recovery that is not a judgement call: a content filter matching
 nothing excludes *everything*, and Qdrant reports that as success. The search
 tool detects zero-hits-under-filters and retries without them.
+=======
+Retrieval, question generation and marking for Slashus.
+>>>>>>> main
 
 ## Endpoints
 
-| | |
-|---|---|
-| `POST /api/v1/chat` | the agent |
-| `POST /api/v1/mark` | grade a submission |
-| `GET /api/v1/sessions` | sidebar list |
-| `GET /api/v1/sessions/{id}` | messages |
-| `GET /api/v1/sessions/{id}/memory` | **new** — what the agent remembers |
-| `GET /api/v1/practice/{id}` | restore a practice set |
-| `GET /health` | liveness |
-
-Marking is still a separate endpoint and still does not go through
-understanding: the student pressed Mark, not Send. There is no intent to
-infer, and inferring one would add a call and a failure mode to a path with no
-ambiguity.
-
-## Render flags
-
-Every `/chat` and `/mark` response carries three flags that are **always
-present**, never stripped:
-
-```json
-{
-  "kind": "questions",
-  "mode": "question_generation",
-  "is_question_generation": true,
-  "render_target": "practice_panel"
-}
-```
-
-`mode` is one of `normal`, `question_generation`, `marking`, `clarification`,
-`blocked`. `render_target` is `chat` or `practice_panel`.
-
-`kind` is unchanged and still correct, so existing frontend code keeps
-working. The flags exist because branching on `kind == "questions"` is a
-string comparison repeated at every call site, and it breaks silently the day
-a fifth kind appears — `clarification` is that fifth kind.
-
-All three are set in one place (`ChatResponse.for_*`), so they cannot
-disagree.
-
-## Configuration
-
-| Variable | Default | |
+| Method | Path | Purpose |
 |---|---|---|
-| `QWEN_API_KEY` | — | required |
-| `DATABASE_URL` | — | required |
-| `REDIS_URL` | — | agent memory. Per-process without it |
-| `EMBEDDING_GRPC_URL` | `embedding-service:50051` | |
-| `MAX_TOOL_CALLS` | `8` | hard ceiling per turn |
-| `DEV_MODE` | `false` | returns the reasoning trace |
+| POST | `/chat` | question, generation, or conversation |
+| POST | `/mark` | grade a submission |
+| GET | `/sessions` | sidebar list (keyset paginated) |
+| GET | `/sessions/{id}` | one session's messages (keyset paginated) |
+| GET | `/practice/{id}` | restore a practice set with its answers |
+| GET | `/health` | liveness |
 
-Without Redis the agent still works with one replica. With several, a
-follow-up can land on a replica that never saw the previous turn and memory is
-lost mid-conversation — which looks like the model getting confused rather
-than a missing dependency. `scripts/check.py` warns about it.
+Identity comes from `X-User-Id`, injected by api-gateway from a verified
+token. Every query is user-scoped regardless — Qdrant and Postgres have no
+ownership concept of their own.
+
+## Response shape
+
+Every `/chat` response carries `kind`, telling the client where to render:
+
+- `message` → middle column, the conversation
+- `questions` → right panel, the practice set
+- `marking` → right panel, updates in place
+
+`reply` is always present and always renders in the chat column, so a
+generation produces both a chat line and panel content.
+
+When a request cannot be served, `reason` is set — `no_documents`,
+`no_relevant`, or `not_in_source`. The frontend switches on that rather than
+string-matching the reply.
+
+## Models
+
+Groq / Qwen 3.6 serves intent classification, generation and marking. Qwen was
+pre-trained across 119 languages including Sinhala; Llama 3.x officially
+covers 8, none of them.
+
+Gemini still serves query understanding and the evaluator. Kept separate so a
+rate limit on one cannot starve the other.
+
+## Setup
+
+```bash
+pip install -r requirements.txt
+cp .env.example .env      # fill in
+alembic -c database/alembic.ini upgrade head
+PYTHONPATH=src uvicorn api.server:api --port 8084
+```
 
 ## Tests
 
 ```bash
-PYTHONPATH=src python -m pytest tests/ -q
+python -m pytest tests/ -q
 ```
 
+<<<<<<< HEAD
 | file | needs | ran by author |
 |---|---|---|
 | `test_tools.py` | nothing | yes — 11 pass |
@@ -202,3 +197,56 @@ loops and silent dead ends.
 - `weak_areas` from marking is computed and returned but not yet fed back into
   the quiz plan. Wiring it would let "give me practice" target what the
   student actually got wrong.
+=======
+Contract tests only — pure functions where a silent bug is most expensive.
+Anything needing a live Qdrant, Postgres or Groq belongs in an integration
+suite that does not exist yet.
+
+## Retrieval pipeline
+
+```
+query
+  ├─ dense  (BGE-M3)          ─┐
+  └─ sparse (Qdrant TF/IDF)   ─┴─ RRF fusion (0.7 / 0.3)
+                                     │
+                                     ├─ BM25 fusion      free, local, always on
+                                     ├─ LLM rerank       off by default
+                                     └─ diversify        near-duplicate removal
+```
+
+**BM25** (`core/retrieval/bm25.py`) is computed over the retrieved candidate
+pool with real k1 saturation and b length normalization — neither of which the
+Qdrant sparse leg provides, since both are functions of document statistics
+written at ingest.
+
+Because IDF comes from the candidate pool rather than the corpus, this is a
+RE-RANKING signal: it reorders what dense and sparse found, and cannot surface
+something both missed. Corpus-wide BM25 needs ingestion to write BM25-weighted
+document vectors; the exact formula is at the bottom of that file.
+
+**Diversify** uses token-set Jaccard, not content hashing. Sliding-window
+chunks share ~80% of their text but hash differently, so the previous exact-
+match dedup let both through and the LLM received the same passage twice.
+
+## Cost controls
+
+`ENABLE_RERANKING=false` by default. The retrieval loop reranks on every
+attempt and runs up to `max_retries + 1` times, so one question could burn 4
+LLM calls before producing anything. When on, only the top
+`settings.rerank_top_k` (30) hits are reranked — at `max_chunk_budget` the
+overfetch reaches 600, which is a 600KB prompt.
+
+MCQ marking never calls an LLM. It is an integer comparison against the
+stored `correct_index`.
+
+## Known gaps
+
+- No integration tests. Nothing here has been run against a live Qdrant,
+  Postgres or Groq.
+- The retrieval consumer has no retry cap: a message that can never succeed
+  is redelivered indefinitely. Needs a dead-letter path.
+- `summary` and `flashcards` artifacts route through `ANSWER.md` rather than
+  dedicated templates.
+- `correct_index` ships to the browser for instant MCQ feedback. Acceptable
+  for self-directed study; not for graded assessment.
+>>>>>>> main
