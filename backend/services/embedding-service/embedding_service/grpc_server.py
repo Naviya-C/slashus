@@ -11,33 +11,14 @@ POLICY and live in agentic-service's retrieval agent, where they change as
 prompts are tuned. This is a fast, stateless "given a query and a filter,
 return ranked hits" — so tuning retrieval never means redeploying the service
 that also runs the ingestion consumer.
-
-WHAT MOVED HERE IN v2
----------------------
-Two things, both because they need the store and nothing else does:
-
-  * CONTENT FILTERS. The caller can now pass lesson_title / page_number and
-    have them applied server-side. Previously only user_id and doc_ids reached
-    Qdrant, so the retrieval agent built content filters that were silently
-    discarded in transit — retrieval behaved as though they were never set.
-
-  * ListTitles. The exact stored lesson titles for a user. Retrieval used to
-    ask an LLM to produce a title and filtered on the result; the model has
-    never seen the corpus, so it produced a plausible title rather than a real
-    one and the filter matched zero chunks. Handing back the real strings
-    turns that into a closed-set choice.
-
-The POLICY around both still lives in agentic-service. This server applies a
-filter and reports which keys it applied; deciding what to do when a filter
-excludes everything is the caller's problem, because the answer depends on the
-query and this service does not see the query's intent.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
-from collections import Counter
+import threading
 from concurrent import futures
 from pathlib import Path
 
@@ -57,51 +38,6 @@ _RRF_K = 60
 # morphology far better than term matching does; sparse is there to catch the
 # exact-term cases dense paraphrases away.
 _W_DENSE, _W_SPARSE = 0.7, 0.3
-
-# Payload keys a caller may filter on. An allowlist rather than "anything the
-# caller sends", for two reasons:
-#
-#   * A key that is not in the payload is not an error in Qdrant. It matches
-#     zero points and comes back as a successful empty result, which reads as
-#     "no relevant documents" while the material sits right there. `lesson_no`
-#     is the live example: query understanding emits it, ingest never writes
-#     it, and filtering on it wipes out every hit.
-#   * Filtering on an unindexed key is a full scan.
-#
-# `user_id` and `doc_id` are deliberately absent: they arrive as typed request
-# fields and are applied unconditionally, so a caller cannot weaken ownership
-# by sending them here.
-_FILTERABLE = frozenset({
-    "lesson_title",
-    "page_number",
-    "block_type",
-    "source_file",
-    "chunk_id",
-})
-
-# Payload keys that hold integers. A filter value arrives as a string on the
-# wire (one type for every key), and MatchValue("42") does not match the
-# integer 42 — it matches nothing, silently.
-_INT_KEYS = frozenset({"page_number", "chunk_index", "token_count"})
-
-# Cap on the ListTitles scan. A user with a very large corpus should not be
-# able to make this walk every point on a UI-triggered call.
-_TITLE_SCAN_PAGES = 20
-_TITLE_SCAN_PAGE_SIZE = 1000
-
-
-def _coerce(key: str, value: str):
-    """Wire string -> the type stored in the payload."""
-    if key in _INT_KEYS:
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            # Leave it as a string rather than dropping the condition. A
-            # dropped filter widens the search silently; a filter that matches
-            # nothing is visible in filters_applied and recoverable by the
-            # caller.
-            log.warning("filter %s=%r is not an integer", key, value)
-    return value
 
 
 class VectorSearchServicer(search_pb2_grpc.VectorSearchServicer):
@@ -125,8 +61,8 @@ class VectorSearchServicer(search_pb2_grpc.VectorSearchServicer):
             return "unavailable"
 
     @staticmethod
-    def _ownership(user_id: str, doc_ids: list[str]) -> list[models.Condition]:
-        """Ownership conditions, built HERE rather than trusted from the caller.
+    def _build_filter(user_id: str, doc_ids: list[str]) -> models.Filter:
+        """Ownership filter, enforced HERE rather than trusted from the caller.
 
         This service owns Qdrant, so it decides who can read what. Qdrant has
         no concept of ownership of its own — a query without user_id returns
@@ -143,61 +79,21 @@ class VectorSearchServicer(search_pb2_grpc.VectorSearchServicer):
             must.append(
                 models.FieldCondition(key="doc_id", match=models.MatchAny(any=list(doc_ids)))
             )
-        return must
-
-    @staticmethod
-    def _content(filters) -> tuple[list[models.Condition], list[str]]:
-        """Content conditions from the request map, plus the keys applied.
-
-        Returns the applied keys so the response can echo them. Without that
-        the caller cannot tell "your filter excluded everything" from "the
-        server ignored your filter" — both look like zero hits.
-        """
-        conditions: list[models.Condition] = []
-        applied: list[str] = []
-
-        for key, holder in filters.items():
-            values = [v for v in holder.values if v != ""]
-            if not values:
-                continue
-            if key not in _FILTERABLE:
-                log.warning("ignoring non-filterable key %r", key)
-                continue
-
-            coerced = [_coerce(key, v) for v in values]
-            if len(coerced) == 1:
-                conditions.append(models.FieldCondition(
-                    key=key, match=models.MatchValue(value=coerced[0])))
-            else:
-                conditions.append(models.FieldCondition(
-                    key=key, match=models.MatchAny(any=coerced)))
-            applied.append(key)
-
-        return conditions, sorted(applied)
+        return models.Filter(must=must)
 
     # ------------------------------------------------------------------
 
     def Search(self, request, context):  # noqa: N802  (gRPC naming)
-        if not request.user_id:
-            # Refuse rather than default. A search with no user_id would match
-            # the entire collection across every account.
-            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "user_id is required")
-
         limit = request.limit or 10
-        owner = self._ownership(request.user_id, list(request.doc_ids))
-        content, applied = self._content(request.filters)
+        query_filter = self._build_filter(request.user_id, list(request.doc_ids))
 
-        # Cheap existence check before embedding anything, and deliberately
-        # WITHOUT the content filters: it answers "has this user uploaded
-        # anything", which is a different question from "does anything match".
-        # Counting with the content filters applied would report
-        # user_has_no_documents for a user whose only mistake was a bad
-        # lesson_title, and the UI would tell them to upload a file they
-        # already uploaded.
+        # Cheap existence check before embedding anything. Distinguishes "this
+        # user has uploaded nothing" from "the search ran and matched nothing",
+        # which need different messages in the UI.
         try:
             total = self._deps.client.count(
                 collection_name=self._collection,
-                count_filter=models.Filter(must=owner),
+                count_filter=query_filter,
                 exact=True,
             ).count
         except Exception:
@@ -209,10 +105,7 @@ class VectorSearchServicer(search_pb2_grpc.VectorSearchServicer):
                 hits=[], collection_used=self._collection,
                 language_used=request.language or "si",
                 user_has_no_documents=True,
-                total_user_chunks=0,
             )
-
-        query_filter = models.Filter(must=owner + content)
 
         mode = request.mode
         dense_hits: list = []
@@ -225,85 +118,11 @@ class VectorSearchServicer(search_pb2_grpc.VectorSearchServicer):
 
         fused = self._fuse(dense_hits, sparse_hits, limit)
 
-        if not fused and applied:
-            # Worth a log line of its own. This is the shape of the failure
-            # that reads as a relevance problem and is not one.
-            log.info(
-                "zero hits under content filters %s for user %s (%d chunks owned)",
-                applied, request.user_id, total,
-            )
-
         return search_pb2.SearchResponse(
             hits=fused,
             collection_used=self._collection,
             language_used=request.language or "si",
             user_has_no_documents=False,
-            total_user_chunks=max(total, 0),
-            filters_applied=applied,
-        )
-
-    # ------------------------------------------------------------------
-
-    def ListTitles(self, request, context):  # noqa: N802
-        """Distinct lesson titles for a user — the EXACT stored strings.
-
-        These are what a filter must match character for character, including
-        any double spaces PDF extraction left behind. Handing them to the
-        caller is the whole point: a title an LLM invents almost never matches
-        one, and the resulting filter excludes an entire lesson while
-        reporting success.
-
-        Counts come along because they are free from the same scan, and they
-        answer "is this lesson one paragraph or forty".
-        """
-        if not request.user_id:
-            context.abort(grpc.StatusCode.INVALID_ARGUMENT, "user_id is required")
-
-        flt = models.Filter(must=self._ownership(request.user_id, list(request.doc_ids)))
-
-        counts: Counter = Counter()
-        total = 0
-        truncated = False
-        offset = None
-
-        try:
-            for _ in range(_TITLE_SCAN_PAGES):
-                points, offset = self._deps.client.scroll(
-                    collection_name=self._collection,
-                    scroll_filter=flt,
-                    limit=_TITLE_SCAN_PAGE_SIZE,
-                    offset=offset,
-                    # Payload projection, not with_payload=True: the full
-                    # payload includes chunk text, and pulling 20k chunks of
-                    # Sinhala across the wire to count titles would be absurd.
-                    with_payload=["lesson_title"],
-                    with_vectors=False,
-                )
-                total += len(points)
-                for p in points:
-                    title = (p.payload or {}).get("lesson_title")
-                    if title:
-                        counts[str(title)] += 1
-                if offset is None:
-                    break
-            else:
-                truncated = True
-        except Exception:
-            log.exception("ListTitles scan failed")
-            context.abort(grpc.StatusCode.INTERNAL, "title scan failed")
-
-        ordered = counts.most_common()
-        if request.limit:
-            ordered = ordered[: request.limit]
-
-        log.info("ListTitles: %d titles over %d chunks for user %s%s",
-                 len(counts), total, request.user_id,
-                 " (truncated)" if truncated else "")
-
-        return search_pb2.ListTitlesResponse(
-            titles=[search_pb2.TitleInfo(title=t, chunk_count=n) for t, n in ordered],
-            total_chunks=total,
-            truncated=truncated,
         )
 
     # ------------------------------------------------------------------
@@ -351,18 +170,16 @@ class VectorSearchServicer(search_pb2_grpc.VectorSearchServicer):
         """
         scores: dict[str, float] = {}
         payloads: dict[str, dict] = {}
-        sources: dict[str, set] = {}
-        ranks: dict[str, dict] = {}
+        sources: dict[str, set[str]] = {}
 
         for weight, hits, label in (
             (_W_DENSE, dense, "semantic"),
-            (_W_SPARSE, sparse, "sparse"),
+            (_W_SPARSE, sparse, "bm25"),
         ):
             for rank, (pid, _score, payload) in enumerate(hits, 1):
                 scores[pid] = scores.get(pid, 0.0) + weight / (_RRF_K + rank)
                 payloads.setdefault(pid, payload)
                 sources.setdefault(pid, set()).add(label)
-                ranks.setdefault(pid, {})[label] = rank
 
         ordered = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:limit]
 
@@ -381,16 +198,11 @@ class VectorSearchServicer(search_pb2_grpc.VectorSearchServicer):
                 chunk_id=str(payload.get("chunk_id", pid)),
                 score=float(score),
                 content=str(payload.get("text", "")),
-                title=str(payload.get("lesson_title") or ""),
+                title=str(payload.get("lesson_title", "")),
                 page=int(payload.get("page_number") or 0),
                 doc_id=str(payload.get("doc_id", "")),
                 source="+".join(sorted(sources[pid])),
                 extra=extra,
-                # 0 means "this leg did not return it". proto3 cannot
-                # distinguish unset from zero on a scalar, and rank 0 does not
-                # exist, so zero is unambiguous here.
-                dense_rank=ranks[pid].get("semantic", 0),
-                sparse_rank=ranks[pid].get("sparse", 0),
             ))
         return out
 

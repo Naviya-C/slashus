@@ -12,7 +12,10 @@ import (
 )
 
 // CORS allows the browser frontend to call the gateway.
-
+//
+// Origins are an explicit allow-list, not "*". A wildcard is incompatible with
+// credentialed requests and would let any site on the internet drive the API
+// with a logged-in user's token.
 func CORS(origins []string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
@@ -35,6 +38,8 @@ func CORS(origins []string, next http.Handler) http.Handler {
 	})
 }
 
+// RequestID assigns an id and forwards it downstream, so one user action can
+// be traced across gateway, upload, ingestion, and agentic logs.
 func RequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.Header.Get(HeaderRequestID)
@@ -57,6 +62,10 @@ func (r *statusRecorder) WriteHeader(code int) {
 	r.ResponseWriter.WriteHeader(code)
 }
 
+// Logging records one line per request.
+//
+// Never logs the Authorization header or the request body: tokens and uploaded
+// content must not end up in log storage.
 func Logging(log *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -74,7 +83,8 @@ func Logging(log *slog.Logger, next http.Handler) http.Handler {
 	})
 }
 
-
+// Recovery converts a panic into a 500 so one bad request cannot kill the
+// process and drop every other in-flight request on the instance.
 func Recovery(log *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {

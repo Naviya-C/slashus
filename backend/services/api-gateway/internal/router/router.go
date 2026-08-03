@@ -1,3 +1,14 @@
+// Package router wires routes to backends and decides which are public.
+//
+// THE ROUTE TABLE IS THE SECURITY POLICY
+// --------------------------------------
+// Every route is either PUBLIC (no token) or PROTECTED (verified token,
+// X-User-Id injected). Getting one into the wrong group is the likeliest way
+// to open a hole, so the groups are registered separately and explicitly
+// rather than inferred from a path prefix.
+//
+// Paths match the auth service as built: /api/v1/auth/... (override with
+// AUTH_PREFIX).
 package router
 
 import (
@@ -63,6 +74,7 @@ func New(d Deps) (http.Handler, error) {
 	}
 
 	// logout-all needs X-User-Id, which only this gateway can inject —
+	// the auth service's routes.go expects this route to be protected.
 	mux.Handle("POST "+prefix+"/logout-all", api(authProxy))
 	mux.Handle("GET "+prefix+"/me", api(authProxy))
 
@@ -76,6 +88,10 @@ func New(d Deps) (http.Handler, error) {
 
 	mux.Handle("GET /jobs/{id}", api(ingestionProxy))
 
+	// Paths are forwarded UNCHANGED, so these must match agentic-service's
+	// FastAPI routes exactly — including the /api/v1 prefix. A mismatch shows
+	// up as a 404 from the backend rather than from the gateway, which reads
+	// like the service is broken.
 	for _, route := range []string{
 		"POST /api/v1/chat",
 		"POST /api/v1/mark",
