@@ -129,6 +129,7 @@ class Brain:
                     if 0 <= i < len(shortlist):
                         llm_title = shortlist[i]
                         llm_conf = float(data.get("confidence", 0.5))
+                        logger.info("title index %d of %d -> %r", i + 1, len(shortlist), llm_title)
                     else:
                         logger.warning("title index %r out of range", index)
             except Exception:
