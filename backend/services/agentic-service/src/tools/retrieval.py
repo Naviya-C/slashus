@@ -1,23 +1,3 @@
-"""
-tools/retrieval.py
-==================
-
-Deterministic retrieval execution. The agent decides WHAT to search; these
-decide nothing.
-
-Everything here was already correct in the previous version and is unchanged
-in substance — hybrid search over gRPC, RRF in embedding-service, BM25 fusion
-and diversification locally. What changed is who calls it: the keywords, the
-lesson title, the filters and the budget now arrive from an LLM-produced plan
-instead of being assembled by Python.
-
-The one piece of policy that stays HERE, and must: ownership. `user_id` is
-injected by the registry from the authenticated session, and the filter is
-built below rather than accepted from the plan. A plan is model output; model
-output has read untrusted textbook text; and Qdrant has no concept of
-ownership of its own.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -31,14 +11,6 @@ from vectorstore import SearchRequest
 
 logger = logging.getLogger(__name__)
 
-# Payload keys a PLAN may filter on. The same allowlist reasoning as
-# embedding-service, enforced here too so a bad plan never becomes a wire
-# request: a key that is not in the payload matches zero points and Qdrant
-# reports that as success, which reads as "no relevant documents" while the
-# material sits right there.
-#
-# `lesson_title` is allowed here because the plan gets it from the real title
-# list (see list_lesson_titles), not from a model inventing a string.
 _PLANNABLE_FILTERS = frozenset({"lesson_title", "page_number", "block_type"})
 
 _MAX_BUDGET = settings.max_chunk_budget
@@ -99,11 +71,6 @@ def register_retrieval_tools(registry: ToolRegistry, vectors) -> None:
             return {"chunks": [], "user_has_no_documents": True,
                     "total_user_chunks": 0, "filters_applied": []}
 
-        # A content filter that matched nothing excludes EVERYTHING, and
-        # Qdrant reports that as a successful empty result. Recovery is here
-        # rather than left to the agent because it costs one extra call and
-        # the alternative is a confident "your documents don't cover this"
-        # about material that is sitting in the index.
         content = [k for k in applied if k not in ("user_id", "doc_id")]
         if not hits and content:
             logger.warning("zero hits under %s — retrying without them", content)
@@ -117,9 +84,6 @@ def register_retrieval_tools(registry: ToolRegistry, vectors) -> None:
             hits = response.hits
 
         if lesson_title and title_as == "boost" and hits:
-            # Reorders, does not exclude. A wrong title costs a little ranking
-            # instead of the whole answer, and chunks with no title at all
-            # survive — a filter drops those permanently.
             matched = [h for h in hits if h.title == lesson_title]
             if matched:
                 hits = matched + [h for h in hits if h.title != lesson_title]
