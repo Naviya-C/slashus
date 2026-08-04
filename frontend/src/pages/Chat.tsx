@@ -19,94 +19,127 @@ function Chat() {
 
     function toggleSelect(docId: string) {
         setSelectedDocIds((prev) =>
-        prev.includes(docId)
-            ? prev.filter((id) => id !== docId)
-            : prev.length >= MAX_SELECTED
-            ? prev 
-            : [...prev, docId],
+            prev.includes(docId)
+                ? prev.filter((id) => id !== docId)
+                : prev.length >= MAX_SELECTED
+                ? prev
+                : [...prev, docId],
         );
     }
 
     const hasSelection = selectedDocIds.length > 0;
 
-  return (
+    return (
         <div className="h-screen flex flex-col overflow-hidden bg-neutral-950 text-neutral-100">
+            {/* Header */}
             <header className="h-16 shrink-0 border-b border-neutral-800 flex items-center justify-between px-6">
-            {/* Left: logo */}
-            <div className="m-2 pl-5 hover:cursor-pointer">
-                <Logo />
-            </div>
+                <div className="m-2 pl-5 hover:cursor-pointer">
+                    <Logo />
+                </div>
 
-            {/* Right: user menu */}
                 <UserMenu />
             </header>
 
             <div className="flex-1 flex min-h-0">
-                <aside className="w-72 shrink-0 border-r border-neutral-800 flex flex-col min-h-0 px-2 pt-5">
-                    <span className="px-3 text-xs tracking-widest text-neutral-500">
-                        01 / UPLOADS
-                    </span>
-                    <div className="shrink-0">
-                        <FileDropzone onUploaded={refetch} />
-                    </div>
+                {/* Left Sidebar */}
+                <aside className="w-72 shrink-0 border-r border-neutral-800 flex flex-col min-h-0">
 
-                    <div className="flex-1 overflow-y-auto pt-4 min-h-0">
-                        <DocumentList
-                            documents={documents}
-                            loading={loading}
-                            error={error}
-                            selectedDocIds={selectedDocIds}
-                            onToggleSelect={toggleSelect}
-                            onRename={(doc) => console.log("rename", doc)}
-                            onDelete={(doc) => console.log("delete", doc)}
-                            onDownload={(doc) => console.log("download", doc)}
-                        />
-                    </div>
+                    {/* ---------- TOP HALF ---------- */}
+                    <div className="flex-1 min-h-0 flex flex-col border-b border-neutral-800">
 
-                    <div className="flex-1 border-t border-neutral-800 py-4">
-                        <span className="px-3 text-xs tracking-widest text-neutral-500">
-                            02 / SESSIONS
-                            <div className="flex-1 overflow-y-auto border-t border-neutral-800 py-4 min-h-0">
-                            <div className="mt-3">
-                                <SessionList
-                                    activeId={chat.sessionId}
-                                    onOpen={chat.openSession}
-                                    refreshKey={chat.messages.length}
+                        {/* Upload */}
+                        <div className="shrink-0 px-2 pt-5">
+                            <span className="px-3 text-xs tracking-widest text-neutral-500">
+                                01 / UPLOADS
+                            </span>
+
+                            <div className="mt-2">
+                                <FileDropzone onUploaded={refetch} />
+                            </div>
+                        </div>
+
+                        {/* Documents */}
+                        <div className="flex-1 min-h-0 flex flex-col px-2 pt-5">
+                            <span className="px-3 text-xs tracking-widest text-neutral-500">
+                                02 / DOCUMENTS
+                            </span>
+
+                            <div className="mt-3 flex-1 overflow-y-auto">
+                                <DocumentList
+                                    documents={documents}
+                                    loading={loading}
+                                    error={error}
+                                    selectedDocIds={selectedDocIds}
+                                    onToggleSelect={toggleSelect}
+                                    onRename={(doc) => console.log("rename", doc)}
+                                    onDelete={(doc) => console.log("delete", doc)}
+                                    onDownload={(doc) => console.log("download", doc)}
                                 />
                             </div>
-                            </div>
-                        </span>
+                        </div>
                     </div>
+
+                    {/* ---------- BOTTOM HALF ---------- */}
+                    <div className="flex-1 min-h-0 flex flex-col">
+
+                        <div className="shrink-0 px-2 pt-5">
+                            <span className="px-3 text-xs tracking-widest text-neutral-500">
+                                03 / SESSIONS
+                            </span>
+                        </div>
+
+                        <div className="flex-1 min-h-0 overflow-y-auto px-2 pt-3">
+                            <SessionList
+                                activeId={chat.sessionId}
+                                onOpen={chat.openSession}
+                                refreshKey={chat.messages.length}
+                            />
+                        </div>
+                    </div>
+
                 </aside>
 
+                {/* Chat */}
                 <main className="flex-1 flex flex-col min-h-0">
                     <div className="flex-1 overflow-y-auto px-6 py-4">
                         {chat.messages.map((m) => (
-                            <MessageCard key={m.id} role={m.role} content={m.content}
-                            citations={m.citations} reason={m.reason} />
+                            <MessageCard
+                                key={m.id}
+                                role={m.role}
+                                content={m.content}
+                                citations={m.citations}
+                                reason={m.reason}
+                            />
                         ))}
                     </div>
 
                     <div className="shrink-0 mx-auto mb-6 w-full max-w-3xl px-4">
                         {chat.sending && (
-                            <p className="mb-2 px-1 text-sm text-neutral-500">Thinking…</p>
+                            <p className="mb-2 px-1 text-sm text-neutral-500">
+                                Thinking…
+                            </p>
                         )}
+
                         {chat.error && (
-                            <p className="mb-2 px-1 text-sm text-red-400">{chat.error}</p>
+                            <p className="mb-2 px-1 text-sm text-red-400">
+                                {chat.error}
+                            </p>
                         )}
+
                         <ChatInput
                             onSend={chat.send}
                             disabled={chat.sending}
                             placeholder={
                                 hasSelection
-                                ? "Ask about your materials..."
-                                : "Write a message..."
+                                    ? "Ask about your materials..."
+                                    : "Write a message..."
                             }
                         />
                     </div>
                 </main>
 
-                <aside className="w-170 shrink-0 border-l border-neutral-800 overflow-y-auto">
+                {/* Practice Panel */}
+                <aside className="w-[42rem] shrink-0 border-l border-neutral-800 overflow-y-auto">
                     <PracticePanel
                         questions={chat.questions}
                         answers={chat.answers}
