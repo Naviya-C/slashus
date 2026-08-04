@@ -201,16 +201,6 @@ services:
     cpus: "1.0"
     restart: unless-stopped
 
-  agentic-migrate:
-    build:
-      context: ./services/agentic-service
-    container_name: agentic-migrate
-    env_file:
-      - ./services/agentic-service/.env
-    command: ["alembic", "-c", "database/alembic.ini", "upgrade", "head"]
-    mem_limit: 256m
-    restart: "no"
-
   agentic-service:
     build:
       context: ./services/agentic-service
@@ -220,8 +210,6 @@ services:
         condition: service_healthy
       embedding-service:
         condition: service_healthy
-      agentic-migrate:
-        condition: service_completed_successfully
     env_file:
       - ./services/agentic-service/.env
     environment:
