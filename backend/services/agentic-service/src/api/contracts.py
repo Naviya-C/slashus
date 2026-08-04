@@ -84,8 +84,6 @@ class Question:
     explanation: str | None = None   # shown only after submission
     max_marks: int = 10
     source_pages: list[int] = field(default_factory=list)
-    # From the agent's quiz plan. Surfaced so the panel can label a set and so
-    # "give me harder ones" has something to be relative to.
     difficulty: str = "medium"
     bloom_level: str = ""
 
@@ -98,7 +96,6 @@ class QuestionResult:
     is_correct: bool | None          # None for written — graded, not binary
     feedback: str
     rubric_breakdown: list[dict[str, Any]] = field(default_factory=list)
-    # Populated only when marks < 5. See MARK_WRITTEN.md on why.
     revealed_answer: str | None = None
 
 
@@ -124,10 +121,6 @@ class ChatResponse:
     reason: Reason | None = None
 
     # --- observability -------------------------------------------------
-    # The agent's reasoning: decisions taken, tools called, timings. Contains
-    # no chunk text — chunks are copyrighted passages, and a debug field that
-    # ships them to the browser is a copyright leak wearing an observability
-    # hat. Omitted entirely unless DEV_MODE.
     trace: list[dict[str, Any]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
@@ -164,11 +157,7 @@ class ChatResponse:
         d["mode"] = self.mode.value
         d["render_target"] = self.render_target.value
         d["reason"] = self.reason.value if self.reason else None
-
-        # Empty values are stripped to keep responses small, but the render
-        # flags are ALWAYS present. A frontend that has to handle
-        # `is_question_generation` being absent will eventually treat missing
-        # as truthy somewhere, and open the panel on a plain answer.
+        
         return {k: v for k, v in d.items() if v not in (None, [], "")} | {
             "session_id": self.session_id,
             "kind": self.kind.value,

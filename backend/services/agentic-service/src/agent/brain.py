@@ -1,35 +1,6 @@
 """
 agent/brain.py
 ==============
-
-Every decision the LLM makes, in one place.
-
-One method per decision, each rendering a prompt file and validating the JSON
-back into a dataclass. Nothing here executes anything — no database, no gRPC,
-no Qdrant. The brain returns a decision and the graph acts on it.
-
-WHY SEPARATE CALLS AND NOT ONE BIG "AGENT" PROMPT
--------------------------------------------------
-A single prompt asking for intent, route, keywords, filters, budget, question
-type, count and difficulty in one JSON object is cheaper by one call and worse
-in every other way:
-
-  * more required fields means flakier JSON, and one malformed field takes the
-    whole decision with it
-  * the retrieval plan genuinely needs to see the retrieved titles, which do
-    not exist yet at understanding time
-  * a prompt that does four jobs does all four worse, and tuning one of them
-    silently changes the other three
-
-Separate calls also mean each decision is independently switchable and
-independently debuggable — the reasoning trace shows which one was wrong.
-
-WHY EVERY METHOD HAS A FALLBACK
--------------------------------
-Rate limits happen mid-conversation. A decision that cannot be made should
-degrade to the safe default and keep the turn alive, because the student is
-waiting and a working degraded answer beats a 500. Every fallback is recorded
-in the trace so a silent degradation is still visible.
 """
 
 from __future__ import annotations
@@ -51,6 +22,7 @@ from agent.decisions import (
     Understanding,
 )
 from core.embedding import detect_language
+from core.retrieval.bm25 import BM25
 from prompts import pool
 
 logger = logging.getLogger(__name__)
@@ -64,16 +36,6 @@ class Brain:
     def __init__(self, llm) -> None:
         self._llm = llm
 
-    # ------------------------------------------------------------------
-
-    # Two attempts, not three. A decision call sits on the critical path with
-    # a student waiting, and the failure this covers is a transient 429 or a
-    # truncated JSON body — both usually clear on the first retry. Anything
-    # that fails twice should fall through to the node's default rather than
-    # keep the student waiting another four seconds.
-    #
-    # KeyError is not retried: it means the prompt template is missing a
-    # variable, which no amount of retrying fixes.
     @retry(
         stop=stop_after_attempt(2),
         wait=wait_exponential(multiplier=1, min=1, max=4),
@@ -81,20 +43,10 @@ class Brain:
         reraise=True,
     )
     def _json(self, template: str, **values) -> dict:
-        # temperature 0 everywhere in here: extraction and classification have
-        # one right answer, and sampling only adds variance between identical
-        # requests. Generation is the exception and lives in tools/.
         return self._llm.generate_json(pool.render(template, **values), temperature=0.0)
 
-    # ------------------------------------------------------------------
 
     def understand(self, query: str, conversation, retrieval) -> Understanding:
-        """Intent, route, follow-up detection, clarification.
-
-        Sees the conversation because "explain more" is only interpretable
-        against what came before, and sees the previous retrieval because
-        deciding whether a topic continues needs to know what was found.
-        """
         try:
             data = self._json(
                 "UNDERSTAND",
@@ -112,22 +64,15 @@ class Brain:
         if not u.normalized_query:
             u.normalized_query = query
 
-        # "Normalize" is one word from "translate", and the model takes that
-        # step often enough to matter: a Sinhala question comes back as fluent
-        # English, gets embedded, and matches nothing in a Sinhala corpus. The
-        # failure is invisible — retrieval just returns weak results.
         if detect_language(u.normalized_query) != detect_language(query):
             logger.warning("normalized query changed language; keeping the original")
             u.normalized_query = query
 
         return u
 
-    # ------------------------------------------------------------------
-
     def plan_retrieval(self, understanding, conversation,
                        retrieval, has_docs: bool) -> RetrievalPlan:
-        # `understanding` arrives as a dict from LangGraph state, which
-        # serialises models on the way to the checkpointer.
+
         if isinstance(understanding, dict):
             understanding = Understanding.model_validate(understanding)
         try:
@@ -151,54 +96,68 @@ class Brain:
             plan.search_query = understanding.normalized_query
         return plan
 
-    # ------------------------------------------------------------------
+    def choose_lesson_title(self, query: str,
+                                titles: list[str]) -> tuple[str, float]:
+            if not titles:
+                return "", 0.0
 
-    def choose_lesson_title(self, query: str, titles: list[str]) -> str:
-        """Pick a REAL title, by index.
+            ranked = BM25(titles).score(query)
+            bm25_title, bm25_conf = "", 0.0
+            if ranked:
+                top = ranked[0].score
+                second = ranked[1].score if len(ranked) > 1 else 0.0
+                bm25_title = titles[ranked[0].index]
+                bm25_conf = top / (top + second) if (top + second) else 0.0
 
-        The model returns a NUMBER, not a string. That is the entire point: a
-        model asked for a title produces a plausible one rather than a real
-        one, and exact-match filtering on it excludes a whole lesson while
-        reporting success. An index into a list it was just given cannot be
-        wrong that way — and an out-of-range index is treated as no match
-        rather than clamped, because a clamped index is a silent wrong answer.
-        """
-        if not titles:
-            return ""
+            shortlist = titles
+            if len(titles) > _MAX_TITLES_IN_PROMPT:
+                if ranked:
+                    shortlist = [titles[d.index] for d in ranked[:_MAX_TITLES_IN_PROMPT]]
+                else:
+                    shortlist = titles[:_MAX_TITLES_IN_PROMPT]
 
-        shortlist = titles[:_MAX_TITLES_IN_PROMPT]
-        try:
-            data = self._json(
-                "CHOOSE_TITLE",
-                query=query,
-                titles="\n".join(f"{i}. {t}" for i, t in enumerate(shortlist, 1)),
-            )
-        except Exception:
-            logger.warning("title choice failed", exc_info=True)
-            return ""
+            llm_title, llm_conf = "", 0.0
+            try:
+                data = self._json(
+                    "CHOOSE_TITLE",
+                    query=query,
+                    titles="\n".join(f"{i}. {t}" for i, t in enumerate(shortlist, 1)),
+                )
+                index = data.get("index")
+                if index is not None:
+                    i = int(index) - 1
+                    if 0 <= i < len(shortlist):
+                        llm_title = shortlist[i]
+                        llm_conf = float(data.get("confidence", 0.5))
+                    else:
+                        logger.warning("title index %r out of range", index)
+            except Exception:
+                logger.warning("title choice failed; falling back to BM25",
+                            exc_info=True)
 
-        index = data.get("index")
-        if index is None:
-            return ""
-        try:
-            i = int(index) - 1
-        except (TypeError, ValueError):
-            return ""
-        return shortlist[i] if 0 <= i < len(shortlist) else ""
+            llm_conf = max(0.0, min(llm_conf, 1.0))
 
-    # ------------------------------------------------------------------
+            if llm_title and llm_title == bm25_title:
+                confidence = min(1.0, (llm_conf + bm25_conf) / 2 + 0.15)
+                chosen = llm_title
+            elif llm_title:
+                confidence = min(0.75, llm_conf * 0.8)
+                chosen = llm_title
+            elif bm25_conf >= 0.65:
+                confidence = min(0.7, bm25_conf * 0.8)
+                chosen = bm25_title
+            else:
+                return "", 0.0
+
+            logger.info("title match %r conf=%.2f (llm=%.2f/%r bm25=%.2f/%r)",
+                        chosen, confidence, llm_conf, llm_title, bm25_conf, bm25_title)
+            
+            return chosen, round(confidence, 2)
+    
 
     def evaluate_retrieval(self, query: str, chunks: list[dict],
                            attempt: int) -> RetrievalVerdict:
-        """Sufficient, or search again?
-
-        Sees a PREVIEW of each chunk, not the whole thing. Judging sufficiency
-        needs to know what the chunks are about; the full text would be ~15k
-        characters of Sinhala per call to answer a yes/no question.
-        """
         if not chunks:
-            # No LLM call needed. Zero chunks is never sufficient, and asking
-            # a model to confirm that costs a call and a second of latency.
             return RetrievalVerdict(sufficient=False, confidence=1.0,
                                     next_action="rewrite" if attempt < 2 else "give_up",
                                     reasoning="nothing retrieved")
@@ -211,9 +170,7 @@ class Brain:
             data = self._json("EVALUATE_RETRIEVAL", query=query,
                               chunks=preview, attempt=attempt)
         except Exception:
-            # Proceed rather than retry. The chunks might be fine, and
-            # spending the remaining budget on retries the evaluator cannot
-            # judge just delays an answer the student may already have.
+            
             logger.warning("retrieval evaluation unavailable; proceeding",
                            exc_info=True)
             return RetrievalVerdict(sufficient=True, confidence=0.0,
@@ -221,7 +178,6 @@ class Brain:
 
         return RetrievalVerdict.model_validate(data)
 
-    # ------------------------------------------------------------------
 
     def plan_quiz(self, query: str, chunks: list[dict], conversation) -> QuizPlan:
         titles = sorted({c.get("title", "") for c in chunks if c.get("title")})
@@ -240,7 +196,6 @@ class Brain:
 
         return QuizPlan.model_validate(data)
 
-    # ------------------------------------------------------------------
 
     def plan_answer(self, query: str, conversation) -> AnswerPlan:
         try:
@@ -250,16 +205,9 @@ class Brain:
             return AnswerPlan(reasoning="llm unavailable")
         return AnswerPlan.model_validate(data)
 
-    # ------------------------------------------------------------------
 
     def greet(self, query: str, conversation) -> str:
-        """Reply to a greeting.
 
-        Generated rather than a constant, for one reason that matters: the
-        corpus and the students are Sinhala, and a hardcoded English sentence
-        is the wrong answer for most of them. It also lets the reply reference
-        what the conversation has already covered.
-        """
         try:
             data = self._json("GREET", query=query,
                               conversation=conversation.as_prompt_block())
@@ -267,9 +215,7 @@ class Brain:
         except Exception:
             logger.warning("greeting generation failed", exc_info=True)
             reply = ""
-
-        # A blank chat bubble is worse than a generic sentence, so the
-        # fallback is unconditional rather than `query and "..."`.
+            
         return reply or (
             "Hello. Ask me about anything in your uploaded documents — I can "
             "explain it or make practice questions from it."
@@ -279,9 +225,7 @@ class Brain:
 
     def summarise_conversation(self, state, latest_user: str,
                                latest_assistant: str) -> tuple[str, str]:
-        """Rolling summary + active topic. Returns the previous values on
-        failure, so a failed summarisation loses an update rather than the
-        whole memory."""
+
         try:
             data = self._json(
                 "SUMMARISE",

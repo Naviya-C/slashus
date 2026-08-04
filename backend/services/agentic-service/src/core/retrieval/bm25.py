@@ -30,18 +30,6 @@ directly — we already have them in memory. It runs as a third retrieval signal
 fused alongside dense and sparse, costs nothing (no API, no model), and needs
 no re-indexing.
 
-THE HONEST LIMITATION
----------------------
-IDF is computed over the candidate pool, not the corpus. Every candidate
-already matched the query, so document frequencies are inflated relative to
-the true corpus and discriminative terms look less rare than they are. This is
-the standard trade for candidate-pool rescoring and it works well in practice
-— but it means BM25 here is a RE-RANKING signal, not a retrieval signal. It
-can reorder what dense and sparse found; it cannot surface something they
-both missed.
-
-For corpus-wide BM25, ingestion must write BM25-weighted document vectors. See
-the note at the bottom of this file.
 """
 
 from __future__ import annotations
@@ -54,17 +42,11 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
-# Standard Okapi parameters. k1 controls how quickly term frequency saturates;
-# b controls how strongly length is normalized (0 = not at all, 1 = fully).
-# These values are the field default and a sensible starting point for mixed
-# Sinhala/English text.
+
 DEFAULT_K1 = 1.5
 DEFAULT_B = 0.75
 
-# MUST match embedding-service's tokenizer in
-# embedding_service/adapter/sparse_encoder.py. They are in different services
-# now, so nothing enforces it — a divergence here degrades BM25 fusion
-# silently, with no error on either side.
+
 _TOKEN_RE = re.compile(r"[\u0D80-\u0DFF]+|[a-zA-Z]+|\d+")
 
 
@@ -97,21 +79,11 @@ class BM25:
 
         total = sum(self._lengths)
         self._n = len(documents)
-        # Guard against an empty pool: avgdl of 0 makes the length
-        # normalization term divide by zero.
         self._avgdl = (total / self._n) if self._n else 0.0
 
         self._idf = self._build_idf()
 
     def _build_idf(self) -> dict[str, float]:
-        """Robertson-Sparck-Jones IDF with the +1 smoothing.
-
-        The +1 inside the log keeps IDF non-negative. Without it, a term
-        appearing in more than half the pool gets a NEGATIVE weight, and a
-        document is then penalised for containing a query term — which is
-        never what you want when the pool is small and terms are common by
-        construction.
-        """
         df: Counter[str] = Counter()
         for tokens in self._tokenized:
             df.update(set(tokens))
@@ -130,9 +102,6 @@ class BM25:
         if not query_terms:
             return []
 
-        # Query terms deduplicated: BM25 scores each DISTINCT query term once.
-        # Counting repeats would let a user double a term's weight simply by
-        # repeating it, which is not what the model intends.
         unique_terms = set(query_terms)
 
         results: list[ScoredDoc] = []
@@ -145,9 +114,6 @@ class BM25:
                 if not freq:
                     continue
                 idf = self._idf.get(term, 0.0)
-                # The saturation term: as freq grows, the numerator grows
-                # linearly while the denominator grows too, so the whole
-                # expression approaches (k1 + 1) rather than growing forever.
                 numerator = freq * (self._k1 + 1)
                 denominator = freq + self._k1 * (1 - self._b + self._b * length_ratio)
                 score += idf * numerator / denominator
@@ -165,21 +131,4 @@ def rank(query: str, documents: list[str], *, k1: float = DEFAULT_K1,
     return BM25(documents, k1=k1, b=b).score(query)
 
 
-# ---------------------------------------------------------------------------
-# FOR CORPUS-WIDE BM25 (requires re-indexing)
-# ---------------------------------------------------------------------------
-# embedding-service would need to write BM25-weighted sparse vectors at ingest
-# instead of raw counts:
-#
-#     weight(t, D) = tf(t,D) * (k1 + 1)
-#                    / (tf(t,D) + k1 * (1 - b + b * |D| / avgdl))
-#
-# with |D| the chunk's token count and avgdl the corpus average, computed in a
-# first pass over all chunks.
-#
-# The query side then sends 1.0 per distinct query term (NOT counts — the
-# saturation is already baked into the document weights), and Qdrant's
-# Modifier.IDF supplies the IDF from real corpus statistics.
-#
-# That combination is exact Okapi BM25 with corpus-wide IDF, and it would
-# replace this module as a RETRIEVAL signal rather than a reranking one.
+

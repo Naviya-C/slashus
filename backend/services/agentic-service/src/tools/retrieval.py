@@ -15,6 +15,8 @@ _PLANNABLE_FILTERS = frozenset({"lesson_title", "page_number", "block_type"})
 
 _MAX_BUDGET = settings.max_chunk_budget
 _OVERFETCH = settings.overfetch_factor
+_TITLE_FILTER_AT = 0.80
+_TITLE_WEIGHTS = ((0.50, 3.0), (0.40, 1.5))
 
 
 def _chunk_dict(hit) -> dict[str, Any]:
@@ -32,18 +34,23 @@ def _chunk_dict(hit) -> dict[str, Any]:
 
 def register_retrieval_tools(registry: ToolRegistry, vectors) -> None:
 
+    def _weight_for(confidence: float) -> float:
+        for threshold, weight in _TITLE_WEIGHTS:
+            if confidence >= threshold:
+                return weight
+        return 1.0
+
     def hybrid_search(*, user_id: UUID, session_id: str, query: str,
-                      lesson_title: str = "", filters: dict | None = None,
+                      lesson_title: str = "", title_confidence: float = 0.0,
+                      filters: dict | None = None,
                       budget: int = 12, doc_ids: list | None = None,
-                      title_as: str = "boost") -> dict[str, Any]:
-        """Dense + sparse + RRF (embedding-service), then BM25 fusion and
-        diversification locally."""
+                      title_as: str = "auto") -> dict[str, Any]:
+
         if not str(query or "").strip():
             raise ToolError("query is empty")
 
         budget = clamp_int(budget, 12, 1, _MAX_BUDGET)
 
-        # Ownership, built here and never from the plan.
         applied: dict[str, Any] = {"user_id": str(user_id)}
         if doc_ids:
             applied["doc_id"] = [str(d) for d in doc_ids]
@@ -54,7 +61,11 @@ def register_retrieval_tools(registry: ToolRegistry, vectors) -> None:
             elif key not in _PLANNABLE_FILTERS:
                 logger.info("plan proposed non-filterable key %r; ignored", key)
 
-        if lesson_title and title_as == "filter":
+        as_filter = (
+            title_as == "filter"
+            or (title_as == "auto" and title_confidence >= _TITLE_FILTER_AT)
+        )
+        if lesson_title and as_filter:
             applied["lesson_title"] = lesson_title
 
         response = vectors.search(SearchRequest(
@@ -83,14 +94,28 @@ def register_retrieval_tools(registry: ToolRegistry, vectors) -> None:
             ))
             hits = response.hits
 
-        if lesson_title and title_as == "boost" and hits:
-            matched = [h for h in hits if h.title == lesson_title]
-            if matched:
-                hits = matched + [h for h in hits if h.title != lesson_title]
-
         if hits:
             hits = fuse_bm25(query, hits)
+
+        weight = _weight_for(title_confidence)
+        if lesson_title and not as_filter and hits and weight > 1.0:
+            for h in hits:
+                if h.title == lesson_title:
+                    h.score *= weight
+            hits = sorted(hits, key=lambda h: h.score, reverse=True)
+
         hits = diversify(hits, budget)
+
+        logger.info(
+            "search %r -> %d hits (dense/sparse=%d/%d) title=%r conf=%.2f "
+            "mode=%s filters=%s",
+            query, len(hits),
+            sum(1 for h in hits if h.dense_rank),
+            sum(1 for h in hits if h.sparse_rank),
+            lesson_title, title_confidence,
+            "filter" if as_filter else f"weight x{weight}",
+            list(response.filters_applied),
+        )
 
         return {
             "chunks": [_chunk_dict(h) for h in hits],
@@ -101,14 +126,6 @@ def register_retrieval_tools(registry: ToolRegistry, vectors) -> None:
 
     def list_lesson_titles(*, user_id: UUID, session_id: str,
                            doc_ids: list | None = None) -> dict[str, Any]:
-        """The EXACT stored lesson titles, so the agent picks a real one.
-
-        This is what makes lesson-title planning possible at all. Asked to
-        produce a title from nothing, a model returns something plausible —
-        'අතීතයේ කතාව' where the corpus holds 'අතීතයෙන්  කතාවක්', different
-        inflection and a double space from PDF extraction. Exact-match
-        filtering on that excludes an entire lesson and reports success.
-        """
         listing = vectors.list_titles(str(user_id),
                                       [str(d) for d in (doc_ids or [])])
         return {
@@ -126,9 +143,12 @@ def register_retrieval_tools(registry: ToolRegistry, vectors) -> None:
         args={
             "query": "what to search for — the SUBJECT, not the request wrapper",
             "lesson_title": "an EXACT title from list_lesson_titles, or empty",
+            "title_confidence": "0.0-1.0; >=0.8 restricts the search to that "
+                                "lesson, >=0.4 ranks it higher, below is ignored",
             "filters": "optional: page_number, block_type",
             "budget": "how many chunks to return, 1-40",
-            "title_as": "'boost' to prefer the lesson, 'filter' to require it",
+            "title_as": "'auto' grades on title_confidence; 'filter' or "
+                        "'boost' force the mode",
         },
         run=hybrid_search,
     ))
