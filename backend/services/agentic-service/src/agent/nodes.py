@@ -152,10 +152,11 @@ def build_nodes(brain, tools, memory):
         result, patch = _call(state, "hybrid_search", {
             "query": state["search_query"],
             "lesson_title": state.get("lesson_title", ""),
+            "title_confidence": state.get("title_confidence", 0.0),
             "filters": plan.get("metadata_filters", {}),
             "budget": state.get("budget", 12),
             "doc_ids": state["doc_ids"] if plan.get("use_doc_filter", True) else [],
-            "title_as": "boost",
+            "title_as": "auto",
         })
 
         patch["attempt"] = state.get("attempt", 0) + 1
@@ -193,7 +194,9 @@ def build_nodes(brain, tools, memory):
             patch["budget"] = min(state.get("budget", 12) * 2,
                                   settings.max_chunk_budget)
 
-            patch["lesson_title"] = ""
+            patch["lesson_title"] = min(
+                state.get("title_confidence", 0.0), 0.45
+            )
 
         return patch
 
