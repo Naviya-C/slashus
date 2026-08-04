@@ -13,13 +13,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// refreshCookieName is scoped to the auth path on purpose — see setRefreshCookie.
 const refreshCookieName = "refresh_token"
 const refreshCookiePath = "/api/v1/auth"
 
-// Local dev only: the frontend runs on localhost while the API is on
-// api.slashus.com — different sites, so a Strict cookie is never sent and
-// refresh 401s forever. Production leaves this unset and keeps Strict.
 func sameSiteFromEnv() http.SameSite {
 	switch os.Getenv("COOKIE_SAMESITE") {
 	case "none":
@@ -75,13 +71,7 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	_ = json.NewEncoder(w).Encode(body)
 }
 
-// writeAuthError maps known errors to safe messages.
-//
-// The original passed err.Error() straight to the client. That leaks internals
-// ("failed to secure login session" tells an attacker the database is
-// reachable but the write failed) and, worse, would have leaked any
-// enumeration-revealing message the use case produced. Only the two errors
-// that are safe to disclose are echoed; everything else becomes a generic 500.
+
 func writeAuthError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, usecase.ErrInvalidCredentials):
@@ -108,9 +98,7 @@ func (h *AuthHandler) setRefreshCookie(w http.ResponseWriter, token string) {
 	})
 }
 
-// clearRefreshCookie must mirror Name, Path, Secure and SameSite exactly, or
-// the browser treats it as a DIFFERENT cookie and the original survives —
-// leaving the user "logged out" in the UI while still holding a live token.
+
 func (h *AuthHandler) clearRefreshCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     refreshCookieName,
@@ -134,9 +122,6 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.registerUseCase.Register(req.FirstName, req.LastName, req.Email, req.Password); err != nil {
-		// Deliberately generic. "email already registered" is an enumeration
-		// oracle: it confirms an address exists on your platform, which is
-		// exactly what login was hardened against leaking.
 		writeJSON(w, http.StatusBadRequest, map[string]string{
 			"error": "could not complete registration",
 		})
@@ -161,9 +146,6 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	h.setRefreshCookie(w, refreshToken)
 
-	// The access token goes in the BODY, not a cookie: the client holds it in
-	// memory and sends it as a bearer header. A cookie would be attached
-	// automatically to every request, which is what makes CSRF possible.
 	writeJSON(w, http.StatusOK, map[string]any{
 		"message":    "login success",
 		"token":      accessToken,
@@ -171,13 +153,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Refresh exchanges the refresh token for a NEW access token AND a NEW refresh
-// token.
-//
-// The rotation is the point: the presented token is consumed, so a copy of it
-// held by anyone else becomes useless — and its later use is detected. The new
-// cookie MUST be set here, or the client is left holding a token that was just
-// revoked and every subsequent refresh fails.
+
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie(refreshCookieName)
 	if err != nil {
@@ -187,9 +163,6 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 
 	accessToken, newRefreshToken, err := h.refreshUseCase.RefreshToken(cookie.Value)
 	if err != nil {
-		// Clear the cookie: whatever the client holds is now invalid, either
-		// because it expired or because reuse was detected and the family was
-		// revoked. Leaving it would send the browser into a refresh loop.
 		h.clearRefreshCookie(w)
 		writeAuthError(w, err)
 		return
@@ -203,12 +176,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Logout revokes the session's whole token family and clears the cookie.
-//
-// Always returns 200, even for an unknown or missing token. Logout must be
-// idempotent — a client retrying after a network blip should not see an error
-// — and reporting "no such token" would let an attacker probe which tokens are
-// still live.
+
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie(refreshCookieName); err == nil {
 		_ = h.logoutUseCase.Logout(cookie.Value)
@@ -217,12 +185,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"message": "logged out"})
 }
 
-// LogoutAll ends every session for the user — "sign out of all devices", and
-// the correct response to a password change or a suspected compromise.
-//
-// The user id comes from X-User-Id, injected by the gateway from a verified
-// token. This service never re-verifies; the gateway is the only validator,
-// and it is the only party that can set this header.
+
 func (h *AuthHandler) LogoutAll(w http.ResponseWriter, r *http.Request) {
 	userID, err := uuid.Parse(r.Header.Get("X-User-Id"))
 	if err != nil {

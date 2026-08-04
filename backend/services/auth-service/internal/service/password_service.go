@@ -24,10 +24,8 @@ var (
 // memory. 1 KiB is far beyond any real passphrase.
 const maxPasswordLen = 1024
 
-// Current parameters for NEW hashes. Existing hashes are verified with
-// whatever parameters THEY were created with — see Verify.
+
 const (
-	// These determine how expensive hashing is, higher values -> solwer for attackers.
 	argonTime    uint32 = 3
 	argonMemory  uint32 = 64 * 1024 // 64 MiB
 	argonThreads uint8  = 2
@@ -76,11 +74,6 @@ type params struct {
 }
 
 // decode splits a PHC string into its parts.
-//
-// The parameters are PARSED, not assumed. The previous implementation
-// hardcoded t=3, m=64MB, p=2 in Verify — so the moment those constants were
-// raised (which you should do as hardware improves), every existing user would
-// be locked out, because their stored hashes were built with the old values.
 func decode(encoded string) (p params, salt, hash []byte, err error) {
 	parts := strings.Split(encoded, "$")
 	if len(parts) != 6 || parts[1] != "argon2id" {
@@ -121,20 +114,12 @@ func (a *Argon2idPasswordService) Verify(password, encodedHash string) error {
 
 	got := argon2.IDKey([]byte(password), salt, p.time, p.memory, p.threads, p.keyLen)
 
-	// Constant time: a byte-by-byte comparison leaks how much of the hash
-	// matched, which is enough to reconstruct it given enough attempts.
 	if subtle.ConstantTimeCompare(want, got) == 1 {
 		return nil
 	}
 	return ErrPasswordMismatched
 }
 
-// NeedsRehash reports whether a stored hash used weaker parameters than the
-// current ones.
-//
-// Call it after a SUCCESSFUL login — that is the only moment the plaintext is
-// available — and silently re-hash. This is how you raise cost parameters over
-// time without a forced password reset.
 func (a *Argon2idPasswordService) NeedsRehash(encodedHash string) bool {
 	p, _, _, err := decode(encodedHash)
 	if err != nil {

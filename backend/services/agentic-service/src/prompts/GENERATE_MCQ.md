@@ -57,3 +57,10 @@ PREVIOUS QUESTIONS (avoid these):
 
 SOURCE:
 {{sources}}
+
+DIFFICULTY: {{difficulty}}
+
+`easy` questions test recall of something stated plainly in the source.
+`medium` requires connecting two statements. `hard` requires applying the idea
+to a case the source does not spell out — but the answer must still be
+decidable from the source alone, or it cannot be marked.

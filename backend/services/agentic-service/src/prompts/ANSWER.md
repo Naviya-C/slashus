@@ -40,3 +40,8 @@ QUESTION:
 
 SOURCE:
 {{sources}}
+
+STYLE REQUESTED: {{style}}
+
+Honour it if it is not "(default)". A student who asked for shorter answers
+means every answer after that, not only the one where they said it.

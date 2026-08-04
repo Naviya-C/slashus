@@ -1,4 +1,3 @@
-// internal/config/config.go
 package config
 
 import (
@@ -15,13 +14,8 @@ type Config struct {
 	DatabaseURL_P string
 
 	// --- token signing ---
-	// The RSA private key, PEM encoded. Only this service holds it.
 	PrivateKeyPEM  string
 	PrivateKeyFile string
-
-	// Required claims. Without them a token minted here is valid at any other
-	// service trusting the same key — the verifier has nothing to tell them
-	// apart.
 	Issuer   string
 	Audience string
  
@@ -29,8 +23,6 @@ type Config struct {
 	RefreshTTL time.Duration
 
 	RedisURL string
-
-	// Dev only: generate an ephemeral signing key at startup.
 	DevMode bool
 }
 
@@ -50,11 +42,6 @@ func LoadEnv() (*Config, error) {
 		DevMode:        os.Getenv("DEV_MODE") == "true",
 	}
 
-	// Validate EVERYTHING required, not just the database.
-	//
-	// The original only checked the two database URLs, so a missing
-	// JWT_SECRET produced a service that signed every token with an empty
-	// key — publicly forgeable, and nothing looked broken.
 	var missing []string
 	if cfg.DatabaseURL == "" {
 		missing = append(missing, "DATABASE_URL")
@@ -75,8 +62,6 @@ func LoadEnv() (*Config, error) {
 		return nil, fmt.Errorf("missing required config: %s", strings.Join(missing, ", "))
 	}
 
-	// A short access TTL is the only thing limiting the damage of a stolen
-	// access token, since verification is stateless and cannot revoke.
 	if cfg.AccessTTL > time.Hour {
 		return nil, fmt.Errorf("ACCESS_TOKEN_TTL of %s is too long; keep it under 1h", cfg.AccessTTL)
 	}
