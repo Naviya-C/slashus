@@ -1,41 +1,9 @@
-"""
-agent/decisions.py
-==================
-
-The shapes the LLM decides in — pydantic models with COERCING validators.
-
-WHY COERCE RATHER THAN RAISE
-----------------------------
-An LLM returns JSON that is usually right. `count: "five"`, `budget: 900`,
-`route: "RETRIEVE_AND_GENERATE"` when the options were lowercase,
-`needs_clarification: "no"` as a string — all of these arrive in production.
-
-Plain pydantic raises on the first bad field and discards the eleven good
-ones. Here a malformed `count` costs the default count, not the whole
-decision. So every model uses `model_validator(mode="before")` to clean the
-payload, and the graph never sees a ValidationError from a model that merely
-got one field wrong.
-
-The fallback is always the SAFE direction, not the convenient one:
-
-  * unknown route      -> answer, not questions. An unwanted explanation is
-                          mildly annoying; an unwanted practice set opens a
-                          panel the student did not ask for and buries their
-                          actual question.
-  * unparseable budget -> the default, never the model's number unclamped
-  * clarification flag -> false. Asking a clarifying question the student did
-                          not need wastes a turn; the agent should try.
-"""
-
 from __future__ import annotations
 
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-# The routes the agent may take. Small on purpose: every extra route is
-# another branch the model gets to be wrong about, and "summarise" and
-# "explain" are the same execution path with a different prompt style.
 Route = Literal["answer", "questions", "mark", "clarify", "chat"]
 QType = Literal["mcq", "true_false", "short", "structured", "essay"]
 Difficulty = Literal["easy", "medium", "hard"]
@@ -90,11 +58,6 @@ def _one_of(value: Any, options: tuple[str, ...], default: str) -> str:
 
 
 class _Decision(BaseModel):
-    """Base: ignore unknown keys rather than rejecting the payload.
-
-    A model that invents an extra field has still answered the question, and
-    `extra="forbid"` would throw away a good decision over a stray key.
-    """
     model_config = ConfigDict(extra="ignore")
 
     reasoning: str = ""
@@ -126,15 +89,11 @@ class Understanding(_Decision):
         needs = _as_bool(data.get("needs_clarification"))
         question = _as_str(data.get("clarification_question"))
 
-        # A clarify route with no question to ask would render an empty
-        # bubble. The model flagged ambiguity but could not say what was
-        # ambiguous, which is not actionable — proceed instead.
         if needs and not question:
             needs = False
         if needs:
             route = "clarify"
         elif route == "clarify":
-            # The reverse: routed to clarify without setting the flag.
             needs = bool(question)
             if not needs:
                 route = "answer"
@@ -156,8 +115,6 @@ class Understanding(_Decision):
 
 
 class RetrievalPlan(_Decision):
-    """How to find the material — or whether to look at all."""
-
     should_retrieve: bool = True
     reuse_previous: bool = False
     search_query: str = ""
@@ -206,8 +163,7 @@ class RetrievalVerdict(_Decision):
                          ("proceed", "rewrite", "widen", "give_up"), "proceed")
         rewritten = _as_str(data.get("rewritten_query"))
 
-        # A rewrite instruction with no rewritten query would re-run the
-        # identical search, spend a call, and get the identical result.
+
         if action == "rewrite" and not rewritten:
             action = "widen"
 
@@ -237,9 +193,6 @@ class QuizPlan(_Decision):
         if not isinstance(data, dict):
             return {}
         return {
-            # The prompt asks for `question_type`; the field is `qtype`
-            # because that is what the database column is called. Both
-            # spellings accepted rather than relying on the model using one.
             "qtype": _one_of(data.get("question_type") or data.get("qtype"),
                              ("mcq", "true_false", "short", "structured", "essay"),
                              "mcq"),
@@ -254,12 +207,6 @@ class QuizPlan(_Decision):
 
 
 class AnswerPlan(_Decision):
-    """Style hints for a prose answer.
-
-    Small, because ANSWER.md does the real work — this carries only what the
-    CONVERSATION implies and the prompt cannot know.
-    """
-
     style: str = ""
     include_citations: bool = True
 

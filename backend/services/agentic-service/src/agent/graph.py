@@ -80,9 +80,6 @@ def _checkpointer():
     try:
         from langgraph.checkpoint.redis import RedisSaver
         saver = RedisSaver.from_conn_string(settings.redis_url)
-        # from_conn_string returns a context manager in some versions and a
-        # saver in others. Normalising here keeps the difference out of the
-        # build path.
         saver = saver.__enter__() if hasattr(saver, "__enter__") else saver
         saver.setup()
         logger.info("LangGraph checkpointer: redis")
@@ -102,10 +99,6 @@ def build_graph(brain: Brain, tools, memory, checkpointer=None):
 
     builder.add_edge(START, "load_memory")
 
-    # Marking never goes through understanding: the student pressed Mark, not
-    # Send. There is no intent to infer, and inferring one would add a call
-    # and a failure mode to a path with no ambiguity. The entry point is
-    # overridden at invoke time (see AgentRunner.mark).
     builder.add_conditional_edges(
         "load_memory",
         lambda s: "mark" if s.get("submission") else "understand",
@@ -138,9 +131,7 @@ def build_graph(brain: Brain, tools, memory, checkpointer=None):
         {"retry": "retrieve", "generate": "_generate"},
     )
 
-    # A pass-through so both the evaluate loop and the reuse path converge on
-    # one place that chooses questions vs prose. Without it, that routing
-    # table would be duplicated on two edges and drift.
+
     builder.add_node("_generate", lambda state: {})
     builder.add_conditional_edges(
         "_generate", route_to_generator,
@@ -158,12 +149,6 @@ def build_graph(brain: Brain, tools, memory, checkpointer=None):
 
 
 class AgentRunner:
-    """Thin wrapper over the compiled graph.
-
-    Exists so api/server.py never touches LangGraph config dicts, and so the
-    thread_id convention lives in one place — get it wrong and two students
-    share a conversation.
-    """
 
     def __init__(self, graph) -> None:
         self._graph = graph
@@ -177,12 +162,9 @@ class AgentRunner:
         )
         config = {
             "configurable": {
-                # The checkpoint thread. Session id, NOT user id — a user has
-                # many conversations and they must not share state.
                 "thread_id": f"{user_id}:{session_id}",
             },
-            # Hard stop on graph steps, independent of the tool budget. Guards
-            # against a routing bug producing a cycle no decision can break.
+
             "recursion_limit": 40,
         }
         return self._graph.invoke(state, config=config)

@@ -1,25 +1,3 @@
-"""
-agent/nodes.py
-==============
-
-The graph's nodes, as plain functions over AgentState.
-
-Each takes the state and returns ONLY the keys it changed — LangGraph merges
-the rest. Written as free functions bound to their dependencies by a factory
-(`build_nodes`) rather than methods on a class, because that is what
-`add_node` wants and because it keeps each node independently testable without
-constructing a graph.
-
-WHAT IS A NODE AND WHAT IS AN EDGE
-----------------------------------
-Nodes do work. Edges decide where to go next, and the routing functions live
-at the bottom of this file.
-
-The distinction matters for one reason: LangGraph checkpoints between nodes.
-Anything expensive that should not be repeated on a resume belongs inside a
-node; anything that is a pure function of state belongs on an edge.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -38,12 +16,6 @@ def build_nodes(brain, tools, memory):
     """Bind dependencies and return {node_name: callable}."""
 
     def _call(state: AgentState, name: str, args: dict) -> Any:
-        """Execute a tool and produce its trace entry.
-
-        Returns (result, patch) so the caller can merge the patch into what it
-        returns. The tool budget is spent here rather than in the loop, so no
-        caller can forget it.
-        """
         result = tools.execute(name, args,
                                user_id=UUID(state["user_id"]),
                                session_id=state["session_id"])
@@ -95,9 +67,6 @@ def build_nodes(brain, tools, memory):
                            confidence=round(u.confidence, 2), why=u.reasoning)],
         }
 
-        # Preferences the student stated are merged into conversation memory,
-        # so "shorter answers please" applies to every later turn and not only
-        # the one where they said it.
         if u.preferences:
             merged = dict(state.get("conversation", {}))
             merged["preferences"] = {**merged.get("preferences", {}), **u.preferences}
@@ -112,11 +81,6 @@ def build_nodes(brain, tools, memory):
     # ------------------------------------------------------------------
 
     def small_talk(state: AgentState) -> dict:
-        """A greeting. No documents, no search.
-
-        Generated rather than a hardcoded string: the student may have written
-        in Sinhala, and a fixed English reply is wrong for most of them.
-        """
         started = time.perf_counter()
         reply = brain.greet(state["query"], _rehydrate(state)[0])
         return {
@@ -149,35 +113,17 @@ def build_nodes(brain, tools, memory):
     # ------------------------------------------------------------------
 
     def reuse_retrieval(state: AgentState) -> dict:
-        """Return what was already found, without searching.
-
-        'Explain more', 'continue', 'another example' name no topic. Searching
-        for those words returns whatever sits nearest them in a Sinhala
-        textbook, which is noise — the material the student means is the
-        material already found.
-        """
         result, patch = _call(state, "reuse_previous_retrieval", {})
         if result.ok:
             return {**patch, "chunks": result.data["chunks"],
                     "reused_retrieval": True}
-        # Nothing to reuse — first turn, or the checkpoint expired. The plan
-        # was reasonable; the student still needs an answer, so the edge sends
-        # this to a real search.
+
         logger.info("reuse requested but unavailable; searching instead")
         return {**patch, "reused_retrieval": False}
 
     # ------------------------------------------------------------------
 
     def resolve_lesson_title(state: AgentState) -> dict:
-        """Turn the plan's title HINT into a real stored title.
-
-        The plan can only carry a hint, because at planning time the model has
-        not seen which lessons exist. Asked to produce a title from nothing it
-        returns something plausible — 'අතීතයේ කතාව' where the corpus holds
-        'අතීතයෙන්  කතාවක්', different inflection and a double space from PDF
-        extraction. Exact-match filtering on that excludes a whole lesson and
-        reports success.
-        """
         result, patch = _call(state, "list_lesson_titles",
                               {"doc_ids": state.get("doc_ids", [])})
         if not result.ok or not result.data["titles"]:
@@ -186,16 +132,17 @@ def build_nodes(brain, tools, memory):
         names = [t["title"] for t in result.data["titles"]]
         started = time.perf_counter()
         hint = state["retrieval_plan"].get("lesson_title_hint") or state["search_query"]
-        chosen = brain.choose_lesson_title(hint, names)
+        chosen, confidence = brain.choose_lesson_title(hint, names)
 
         return {
             **patch,
             "titles": names,
             "lesson_title": chosen,
+            "title_confidence": confidence,
             "steps": patch["steps"] + [
                 step("decision", "choose_lesson_title",
                      (time.perf_counter() - started) * 1000,
-                     hint=hint, chose=chosen)],
+                     hint=hint, chose=chosen, confidence=confidence)],
         }
 
     # ------------------------------------------------------------------
@@ -218,9 +165,6 @@ def build_nodes(brain, tools, memory):
                     "reason": "no_relevant"}
 
         if result.data.get("user_has_no_documents"):
-            # Nothing indexed at all. Retrying cannot help, and the student
-            # needs "upload a PDF" rather than "I couldn't find that" — a
-            # different message entirely.
             return {**patch, "chunks": [], "reason": "no_documents"}
 
         return {**patch, "chunks": result.data["chunks"]}
@@ -248,13 +192,11 @@ def build_nodes(brain, tools, memory):
         elif verdict.next_action == "widen":
             patch["budget"] = min(state.get("budget", 12) * 2,
                                   settings.max_chunk_budget)
-            # The lesson filter goes first when widening: it is the narrowest
-            # constraint and the most likely reason the material is thin.
+
             patch["lesson_title"] = ""
 
         return patch
 
-    # ------------------------------------------------------------------
 
     def plan_quiz(state: AgentState) -> dict:
         started = time.perf_counter()
@@ -283,8 +225,6 @@ def build_nodes(brain, tools, memory):
             return {**patch, "errors": [f"generation_failed:{result.error}"]}
 
         questions = result.data["questions"]
-        # Remembered so "5 more" produces genuinely new questions rather than
-        # paraphrases of what the student just saw.
         conversation = dict(state.get("conversation", {}))
         prefs = dict(conversation.get("preferences", {}))
         prefs["asked"] = (previous + [q["question"] for q in questions])[-40:]
@@ -294,7 +234,6 @@ def build_nodes(brain, tools, memory):
                 "practice_set_id": result.data["practice_set_id"],
                 "conversation": conversation}
 
-    # ------------------------------------------------------------------
 
     def plan_answer(state: AgentState) -> dict:
         started = time.perf_counter()
@@ -320,13 +259,9 @@ def build_nodes(brain, tools, memory):
                if plan.get("include_citations", True) else []}
 
         if not result.data["sufficient"]:
-            # The generator judged its own sources inadequate. Trusted over
-            # the retrieval evaluator's earlier verdict because it saw the
-            # full text, not a 300-character preview.
             out["reason"] = "not_in_source"
         return out
 
-    # ------------------------------------------------------------------
 
     def mark(state: AgentState) -> dict:
         result, patch = _call(state, "mark_submission",
@@ -339,7 +274,6 @@ def build_nodes(brain, tools, memory):
                 "total_max": result.data["total_max"],
                 "answer": result.data.get("summary", "")}
 
-    # ------------------------------------------------------------------
 
     def save_memory(state: AgentState) -> dict:
         started = time.perf_counter()
@@ -371,7 +305,6 @@ def build_nodes(brain, tools, memory):
         return {"steps": [step("tool", "save_memory",
                                (time.perf_counter() - started) * 1000)]}
 
-    # ------------------------------------------------------------------
 
     return {
         "load_memory": load_memory,
@@ -410,10 +343,8 @@ def _rehydrate(state: AgentState):
 # ---------------------------------------------------------------------------
 
 def route_after_understand(state: AgentState) -> str:
-    """The LLM's route decision, turned into an edge.
-
-    This is the branch LangGraph is actually here for: three genuinely
-    different paths out of one node, one of which ends the run early.
+    """
+    The LLM's route decision, turned into an edge.
     """
     route = state.get("route", "answer")
     if route == "clarify":
@@ -446,11 +377,8 @@ def route_after_retrieve(state: AgentState) -> str:
 
 
 def route_after_evaluate(state: AgentState) -> str:
-    """The retry loop, as a conditional edge.
-
-    The budget is enforced HERE and not by the brain: the agent decides what
-    to do next, it does not decide how long it may keep deciding. A verdict
-    that keeps returning 'rewrite' would otherwise bill in a tight circle.
+    """
+    The retry loop, as a conditional edge.
     """
     verdict = state.get("verdict", {})
 
