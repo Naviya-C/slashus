@@ -77,7 +77,7 @@ class Repository:
                 "next_cursor": rows[-1].last_message_at.isoformat() if has_more else None,
             }
 
-    def get_or_create_session(
+    def get_or_create_session( 
         self, user_id: UUID, session_id: UUID | None, first_message: str,
         doc_ids: list[UUID] | None = None,
     ) -> ChatSession:
@@ -166,7 +166,7 @@ class Repository:
             )
             db.commit()
 
-    # ---------------------------------------------------------- practice
+    # ----------------------practice------------------------------------ 
 
     def save_practice_set(
         self, user_id: UUID, session_id: UUID, prompt: str,
@@ -209,8 +209,6 @@ class Repository:
                 select(PracticeSet)
                 .where(PracticeSet.id == set_id, PracticeSet.user_id == user_id)
                 .options(
-                    # Without this, rendering 10 questions with answers issues
-                    # 21 queries. selectinload makes it 3.
                     selectinload(PracticeSet.questions).selectinload(PracticeQuestion.answer)
                 )
             )
@@ -244,15 +242,13 @@ class Repository:
         return {
             "selected_index": a.selected_index,
             "answer_text": a.answer_text,
-            # None marks means answered but not yet graded — which is the
-            # state that makes deferred marking possible.
             "marks": float(a.marks) if a.marks is not None else None,
             "is_correct": a.is_correct,
             "feedback": a.feedback,
             "revealed_answer": a.revealed_answer,
         }
 
-    # ---------------------------------------------------------- marking
+    # -------------------------marking--------------------------------- 
 
     def get_question(self, question_id: UUID, user_id: UUID) -> dict | None:
         with self._sf() as db:
@@ -277,11 +273,6 @@ class Repository:
             }
 
     def get_question_sources(self, question_id: UUID) -> list[dict]:
-        """The passages this question was generated from.
-
-        Returns [] if none were stored — marking then falls back to grading
-        against the rubric alone, which is less informed but still consistent.
-        """
         with self._sf() as db:
             q = db.get(PracticeQuestion, question_id)
             return (q.sources or []) if q else []
@@ -294,8 +285,7 @@ class Repository:
             existing = db.scalar(
                 select(PracticeAnswer).where(PracticeAnswer.question_id == question_id)
             )
-            # Upsert: re-answering replaces rather than accumulating rows
-            # nothing knows how to choose between.
+            
             a = existing or PracticeAnswer(question_id=question_id, user_id=user_id)
 
             a.selected_index = selected_index

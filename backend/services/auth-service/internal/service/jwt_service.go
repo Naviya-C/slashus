@@ -26,10 +26,7 @@ type jwtService struct {
 }
 
 // NewJWTService builds the token issuer.
-//
-// issuer and audience are REQUIRED. Without them a token minted here for one
-// application is valid at any other service that trusts the same key — the
-// verifier has nothing to distinguish them by.
+
 func NewJWTService(keys *KeyManager, issuer, audience string, accessTTL time.Duration) (JWTService, error) {
 	if keys == nil {
 		return nil, fmt.Errorf("key manager is required")
@@ -44,13 +41,7 @@ func NewJWTService(keys *KeyManager, issuer, audience string, accessTTL time.Dur
 }
 
 // GenerateTokenAccess mints a short-lived RS256 access token.
-//
-//	iss, aud - so a verifier can reject tokens minted for another app
-//	nbf      - not-before, guards against clock skew being exploited
-//	jti      - unique id, so a single token can be denylisted if needed
-//
-// The `kid` header tells the gateway which published key to verify with, which
-// is what makes key rotation possible without downtime.
+
 func (s *jwtService) GenerateTokenAccess(userID, email string) (string, error) {
 	now := time.Now()
 	claims := jwt.MapClaims{
@@ -69,19 +60,7 @@ func (s *jwtService) GenerateTokenAccess(userID, email string) (string, error) {
 	return token.SignedString(s.keys.PrivateKey())
 }
 
-// GenerateRefreshToken returns the token to hand the client AND the hash to
-// store.
-//
-// THE STORED VALUE IS A HASH, NEVER THE TOKEN
-// -------------------------------------------
-// A refresh token is a bearer credential: whoever holds it can mint access
-// tokens. Storing it in plaintext means a single database read — a backup on a
-// laptop, a SQL injection, an over-permissioned analyst — hands the attacker
-// every active session.
-//
-// SHA-256 rather than Argon2 here on purpose: unlike a password, this is 256
-// bits of true randomness, so there is no dictionary to attack and no need for
-// a slow KDF. Fast hashing keeps refresh cheap.
+// GenerateRefreshToken returns the token to hand the client 
 func (s *jwtService) GenerateRefreshToken() (string, string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {

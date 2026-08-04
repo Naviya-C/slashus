@@ -23,6 +23,19 @@ WHAT STAYED HERE
 The retrieval LOOP — retries, query rewriting, budget escalation, BM25 fusion,
 diversification. Those are policy and belong with the agent that tunes them.
 This client is a thin transport.
+
+WHAT CHANGED IN v2
+------------------
+Content filters now actually reach the server.
+
+Before, this client read `user_id` and `doc_id` out of the filter dict and
+DROPPED everything else on the floor. The retrieval agent built a
+`lesson_title` filter, logged it, and searched as though it had applied — the
+filter existed in the agent's world and nowhere else. Any conclusion drawn
+about whether filtering helped was measuring nothing.
+
+`list_titles` is also new. It returns the real stored titles so the agent can
+match against them instead of asking a model to invent one.
 """
 
 from __future__ import annotations
@@ -33,7 +46,13 @@ import os
 import grpc
 
 from vectorstore import search_pb2, search_pb2_grpc
-from vectorstore.schemas import SearchHit, SearchRequest, SearchResponse
+from vectorstore.schemas import (
+    SearchHit,
+    SearchRequest,
+    SearchResponse,
+    TitleInfo,
+    TitleListing,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,10 +62,34 @@ _MODES = {
     "sparse": search_pb2.SEARCH_MODE_SPARSE,
 }
 
+# Ownership keys are promoted to typed proto fields; everything else in the
+# filter dict is a content filter and goes in the map. Named here rather than
+# inline so the two places that care cannot disagree.
+_OWNERSHIP_KEYS = ("user_id", "doc_id")
+
 # Generous: a cold embedding-service is still loading BGE-M3, and the first
 # search after a deploy legitimately waits. Short enough that a hung service
 # surfaces as an error rather than a spinner the user stares at.
 _TIMEOUT_SECONDS = 30
+
+# ListTitles scans rather than searches, and runs once per session rather than
+# once per query, so it gets its own shorter budget. A slow title scan should
+# degrade title matching, not the whole request.
+_TITLES_TIMEOUT_SECONDS = 15
+
+
+def _as_list(value) -> list[str]:
+    """Normalise a filter value to a list of strings.
+
+    A bare string is a one-element list, not an iterable of characters — the
+    obvious loop over `value` would send ['අ', 'ත', 'ී', ...] and match
+    nothing.
+    """
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return [str(v) for v in value if v is not None and str(v) != ""]
+    return [str(value)] if str(value) != "" else []
 
 
 class GrpcVectorClient:
@@ -78,19 +121,24 @@ class GrpcVectorClient:
         # retrieval agent already builds. Promoted to a typed proto field so
         # it cannot be forgotten — the server rejects a search without it.
         user_id = str(request.filters.get("user_id", ""))
-        doc_ids = request.filters.get("doc_id") or []
-        if isinstance(doc_ids, str):
-            doc_ids = [doc_ids]
+        doc_ids = _as_list(request.filters.get("doc_id"))
+
+        content = {
+            key: search_pb2.FilterValues(values=_as_list(value))
+            for key, value in request.filters.items()
+            if key not in _OWNERSHIP_KEYS and _as_list(value)
+        }
 
         try:
             resp = self._stub.Search(
                 search_pb2.SearchRequest(
                     query=request.query,
                     user_id=user_id,
-                    doc_ids=[str(d) for d in doc_ids],
+                    doc_ids=doc_ids,
                     limit=request.limit,
                     mode=_MODES.get(request.mode, search_pb2.SEARCH_MODE_HYBRID),
                     language=request.language,
+                    filters=content,
                 ),
                 timeout=_TIMEOUT_SECONDS,
             )
@@ -113,9 +161,19 @@ class GrpcVectorClient:
                 page=h.page,
                 source=h.source,
                 payload={"doc_id": h.doc_id, **dict(h.extra)},
+                dense_rank=h.dense_rank,
+                sparse_rank=h.sparse_rank,
             )
             for h in resp.hits
         ]
+
+        requested = set(content)
+        ignored = requested - set(resp.filters_applied)
+        if ignored:
+            # The server refused a key — almost always one that is not in the
+            # payload schema. Silence here would let the agent believe it
+            # narrowed a search it did not narrow.
+            logger.warning("server ignored filter keys %s", sorted(ignored))
 
         if resp.user_has_no_documents:
             # Distinct from "searched and matched nothing" — the user needs a
@@ -127,6 +185,46 @@ class GrpcVectorClient:
             hits=hits,
             language_used=resp.language_used,
             collection_used=resp.collection_used,
+            user_has_no_documents=resp.user_has_no_documents,
+            total_user_chunks=resp.total_user_chunks,
+            filters_applied=list(resp.filters_applied),
+        )
+
+    # ------------------------------------------------------------------
+
+    def list_titles(self, user_id: str, doc_ids: list[str] | None = None,
+                    limit: int = 0) -> TitleListing:
+        """The exact lesson titles stored for this user.
+
+        Returns an empty listing on any failure rather than raising. Title
+        matching is an optimisation: without it retrieval falls back to
+        searching the whole corpus, which is worse but works. A dead title
+        scan must not take chat down with it.
+        """
+        try:
+            resp = self._stub.ListTitles(
+                search_pb2.ListTitlesRequest(
+                    user_id=str(user_id),
+                    doc_ids=[str(d) for d in (doc_ids or [])],
+                    limit=limit,
+                ),
+                timeout=_TITLES_TIMEOUT_SECONDS,
+            )
+        except grpc.RpcError as exc:
+            logger.warning("list_titles failed (%s): %s", exc.code(), exc.details())
+            return TitleListing()
+
+        if resp.truncated:
+            logger.warning(
+                "title listing truncated for user %s — a title missing from "
+                "this list may still exist", user_id,
+            )
+
+        return TitleListing(
+            titles=[TitleInfo(title=t.title, chunk_count=t.chunk_count)
+                    for t in resp.titles],
+            total_chunks=resp.total_chunks,
+            truncated=resp.truncated,
         )
 
     # ------------------------------------------------------------------

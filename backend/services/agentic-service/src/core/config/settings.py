@@ -55,7 +55,6 @@ class Settings:
         default_factory=lambda: _get("EMBEDDING_GRPC_URL", default="embedding-service:50051"))
 
     # --- Retrieval tuning ------------------------------------------------
-<<<<<<< HEAD
     # Ceiling on the budget the agent's retrieval plan may ask for. The plan
     # decides how much material this request needs; this decides how much it
     # is allowed to want.
@@ -75,26 +74,8 @@ class Settings:
     max_retrieval_attempts: int = 3
 
     # Chunks fetched per search before de-duplication trims to budget.
-=======
-    max_chunk_budget: int = 300
->>>>>>> main
     overfetch_factor: float = 2.0
-    rrf_k: int = 60
-    max_retries: int = 3
-    min_confidence_to_stop: float = 0.6
 
-    # Reranking is OFF by default. Cause the rate limiting
-    enable_reranking: bool = field(default_factory=lambda: _flag("ENABLE_RERANKING", default=False))
-    rerank_top_k: int = 30
-
-    # --- Persistence -----------------------------------------------------
-    database_url: str | None = field(default_factory=lambda: _get("DATABASE_URL"))
-    redis_url: str | None = field(default_factory=lambda: _get("REDIS_URL"))
-
-    # --- Dev mode --------------------------------------------------------
-    # Gates raw chunk exposure. Chunks are full passages of copyrighted
-    # textbooks; returning them to a browser lets any logged-in user
-    # reconstruct the corpus a page at a time. Never true on a deployed host.
     dev_mode: bool = field(default_factory=lambda: _flag("DEV_MODE", default=False))
 
 

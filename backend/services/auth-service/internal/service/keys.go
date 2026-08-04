@@ -21,17 +21,11 @@ import (
 	"os"
 )
 
-// Create, load, store, and expose RSA signing keys.
-// KeyManager holds the RSA key used to sign access tokens and publishes the public half as a JWKS document.
-
 type KeyManager struct {
 	private *rsa.PrivateKey
 	kid     string
 }
 
-// NewKeyManagerFromPEM loads a PKCS#8 or PKCS#1 private key.
-// The key comes from the environment (or a mounted secret), never from the
-// repository. A signing key in version control is a signing key that leaks.
 func NewKeyManagerFromPEM(pemData []byte) (*KeyManager, error) {
 	block, _ := pem.Decode(pemData)
 	if block == nil {
@@ -60,16 +54,13 @@ func NewKeyManagerFromPEM(pemData []byte) (*KeyManager, error) {
 			return nil, fmt.Errorf("unsupported PEM block type %q", block.Type)
 	}
 
-	// 2048 is the practical floor. Below that the key is cheap enough to attack that the whole scheme is theatre.
 	if key.N.BitLen() < 2048 {
-		// rejecting weak key lengh
 		return nil, fmt.Errorf("RSA key is %d bits; use at least 2048", key.N.BitLen())
 	}
 
 	return &KeyManager{private: key, kid: thumbprint(&key.PublicKey)}, nil
 }
 
-// LoadKeyManager reads the key from JWT_PRIVATE_KEY (PEM) or JWT_PRIVATE_KEY_FILE (a path).[production key load]
 func LoadKeyManager() (*KeyManager, error) {
 	if pemStr := os.Getenv("JWT_PRIVATE_KEY"); pemStr != "" {
 		return NewKeyManagerFromPEM([]byte(pemStr))
@@ -84,9 +75,6 @@ func LoadKeyManager() (*KeyManager, error) {
 	return nil, fmt.Errorf("set JWT_PRIVATE_KEY or JWT_PRIVATE_KEY_FILE")
 }
 
-// GenerateDevKey creates a throwaway key for local development.
-// Never use in production: the key exists only in memory, so every restart 
-// invalidates all outstanding tokens, and it is not backed up anywhere.
 func GenerateDevKey() (*KeyManager, error) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -99,10 +87,6 @@ func (k *KeyManager) PrivateKey() *rsa.PrivateKey { return k.private }
 func (k *KeyManager) KeyID() string               { return k.kid }
 
 // JWKS returns the public key set served at /.well-known/jwks.json.
-
-// The `kid` lets the gateway pick the right key and makes rotation possible:
-// publish both keys, sign with the new one, and old tokens keep verifying
-// until they expire.
 func (k *KeyManager) JWKS() map[string]any {
 	pub := k.private.PublicKey
 
@@ -127,9 +111,6 @@ func (k *KeyManager) JWKS() map[string]any {
 	}
 }
 
-// thumbprint derives a stable key id from the public key (RFC 7638 style).
-// Deriving it rather than hand-assigning means the kid always matches the key
-// it names, even after rotation.
 func thumbprint(pub *rsa.PublicKey) string {
 	eBytes := big.NewInt(int64(pub.E)).Bytes()
 	canonical := fmt.Sprintf(`{"e":"%s","kty":"RSA","n":"%s"}`,

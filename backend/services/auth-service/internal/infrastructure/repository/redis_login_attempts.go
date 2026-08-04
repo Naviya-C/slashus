@@ -1,6 +1,3 @@
-// This file was previously an empty stub. It now holds the Redis-backed
-// implementation of usecase.LoginAttempts (satisfied structurally — no import
-// of the usecase package needed, so there's no import cycle).
 package repository
 
 import (
@@ -11,14 +8,8 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// lockoutWindow is how long a failed-attempt count is remembered. It resets
-// on the key's TTL rather than growing forever, so a genuine password change
-// or a wait is enough to clear it — this is a brute-force speed bump, not a
-// permanent ban list.
-const lockoutWindow = 15 * time.Minute
 
-// RedisLoginAttempts counts failed logins per email in Redis so the count
-// survives restarts and is shared across every auth-service replica.
+const lockoutWindow = 15 * time.Minute
 type RedisLoginAttempts struct {
 	rdb *redis.Client
 }
@@ -31,9 +22,6 @@ func (r *RedisLoginAttempts) key(email string) string {
 	return "login_attempts:" + email
 }
 
-// Failed returns the current failed-attempt count for email. A Redis error
-// (e.g. a brief network blip) returns 0 rather than failing the login — an
-// unavailable rate limiter must not itself lock everyone out.
 func (r *RedisLoginAttempts) Failed(email string) (int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -48,8 +36,7 @@ func (r *RedisLoginAttempts) Failed(email string) (int, error) {
 	return n, nil
 }
 
-// RecordFailure increments the counter and (re)sets its expiry, so the window
-// slides forward with each new failure rather than expiring mid-attack.
+
 func (r *RedisLoginAttempts) RecordFailure(email string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -65,7 +52,6 @@ func (r *RedisLoginAttempts) RecordFailure(email string) error {
 	return nil
 }
 
-// Reset clears the counter on a successful login.
 func (r *RedisLoginAttempts) Reset(email string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()

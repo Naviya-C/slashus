@@ -8,14 +8,7 @@ import (
 	"auth-service/internal/service"
 )
 
-// JWKSHandler publishes the PUBLIC signing keys.
-//
-// This endpoint is what lets the gateway verify RS256 tokens without ever
-// holding a signing key, and without calling this service on every request:
-// it fetches once, caches, and re-fetches only when it sees an unknown kid.
-//
-// Publicly readable by design — public keys are meant to be public. Serving
-// them is not a disclosure; it is the point.
+
 type JWKSHandler struct {
 	keys *service.KeyManager
 }
