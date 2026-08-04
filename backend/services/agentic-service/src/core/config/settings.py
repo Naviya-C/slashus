@@ -1,7 +1,6 @@
-"""System settings — one env-driven source of truth for the whole system."""
-
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 
@@ -20,12 +19,19 @@ def _get(*names: str, default: str | None = None) -> str | None:
     return default
 
 
-def _flag(*names: str, default: bool = False) -> bool:
-    """Parse a boolean env var.
+def _int(*names: str, default: int) -> int:
+    v = _get(*names)
+    if v is None:
+        return default
+    try:
+        return int(v.strip())
+    except ValueError:
+        logging.getLogger(__name__).warning(
+            "%s=%r is not an integer; using %d", names[0], v, default)
+        return default
 
-    Explicit set membership rather than bool(): `bool("false")` is True, which
-    is the single most common way a feature flag ends up permanently on.
-    """
+
+def _flag(*names: str, default: bool = False) -> bool:
     v = _get(*names)
     if v is None:
         return default
@@ -34,11 +40,9 @@ def _flag(*names: str, default: bool = False) -> bool:
 
 @dataclass(frozen=True)
 class Settings:
-    # --- LLM: Qwen ------------------------------------------------
     qwen_api_key: str | None = field(default_factory=lambda: _get("QWEN_API_KEY"))
     qwen_model: str = field(default_factory=lambda: _get("QWEN_MODEL", default="qwen3.6-plus"))
 
-    # --- LLM: Gemini (retained for retrieval understanding + evaluator) ---
     gemini_api_key: str | None = field(default_factory=lambda: _get("GEMINI_API_KEY"))
     gemini_model: str = field(default_factory=lambda: _get("GEMINI_MODEL", default="gemini-2.5-flash"))
 
@@ -46,35 +50,19 @@ class Settings:
     llm_backoff_seconds: float = 1.5
     llm_max_output_tokens: int = 2048
 
-    # --- Embedding (local BGE-M3) ---------------------------------------
+    database_url: str | None = field(default_factory=lambda: _get("DATABASE_URL"))
+    redis_url: str | None = field(default_factory=lambda: _get("REDIS_URL"))
 
-    # --- Vector store MCP ------------------------------------------------
-    # embedding-service owns Qdrant, BGE-M3 and the sparse vocab. This is the
-    # only way search reaches them.
     embedding_grpc_url: str = field(
         default_factory=lambda: _get("EMBEDDING_GRPC_URL", default="embedding-service:50051"))
 
-    # --- Retrieval tuning ------------------------------------------------
-    # Ceiling on the budget the agent's retrieval plan may ask for. The plan
-    # decides how much material this request needs; this decides how much it
-    # is allowed to want.
     max_chunk_budget: int = 40
     rrf_k: int = 60
-
-    # --- Agent loop -------------------------------------------------------
-    # Hard ceiling on tool executions per turn, enforced on the graph edge
-    # (route_after_evaluate). The agent decides what to do next; it does not
-    # get to decide how long it may keep deciding. A brain that keeps
-    # returning "rewrite" would otherwise bill in a tight circle.
-    max_tool_calls: int = 8
-
-    # Retrieve/evaluate cycles. Three covers search -> rewrite -> search ->
-    # widen -> search. Beyond that the evaluator is looping rather than
-    # converging, and the student has waited several seconds per cycle.
-    max_retrieval_attempts: int = 3
-
-    # Chunks fetched per search before de-duplication trims to budget.
     overfetch_factor: float = 2.0
+
+    max_tool_calls: int = field(default_factory=lambda: _int("MAX_TOOL_CALLS", default=5))
+    max_retrieval_attempts: int = field(
+        default_factory=lambda: _int("MAX_RETRIEVAL_ATTEMPTS", default=3))
 
     dev_mode: bool = field(default_factory=lambda: _flag("DEV_MODE", default=False))
 
