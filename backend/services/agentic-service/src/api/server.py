@@ -107,9 +107,6 @@ def get_agent():
 
 def _redis():
     if not settings.redis_url:
-        # Scratch falls back to a process-local dict. Fine for one replica;
-        # with several, a follow-up can land on a replica that never saw the
-        # previous turn and the agent loses its memory mid-conversation.
         logger.warning("REDIS_URL unset — agent memory is per-process only")
         return None
     try:
@@ -183,12 +180,6 @@ def chat(req: ChatRequest, user_id: UUID = Depends(current_user)):
 
 
 def _shape(state: dict, session_id: str) -> ChatResponse:
-    """Final graph state -> wire response.
-
-    One place decides the render flags, so `kind`, `mode`,
-    `is_question_generation` and `render_target` cannot disagree with each
-    other — which they would within a week if each branch set them by hand.
-    """
     trace = state.get("steps", []) if settings.dev_mode else []
     errors = state.get("errors", [])
 
@@ -241,13 +232,6 @@ def _shape(state: dict, session_id: str) -> ChatResponse:
 
 @api.post("/api/v1/mark")
 def mark(req: MarkRequest, user_id: UUID = Depends(current_user)):
-    """Grade a submission.
-
-    Still a separate endpoint, and still deliberately NOT routed through the
-    agent's understanding step: the client knows this is marking because the
-    student pressed Mark, not Send. There is no intent to infer, and inferring
-    one adds an LLM call plus a failure mode to a path with no ambiguity.
-    """
     state = get_agent().run(
         query="mark", user_id=user_id, session_id=str(req.session_id),
         submission=[s.model_dump() for s in req.submission],
@@ -295,18 +279,6 @@ def session_messages(
 
 @api.get("/api/v1/sessions/{session_id}/memory")
 def session_memory(session_id: UUID, user_id: UUID = Depends(current_user)):
-    """What the agent currently remembers about this session.
-
-    NEW. Exists because agent memory is otherwise invisible: when a follow-up
-    is answered from the wrong material, the question is always "what did it
-    think the topic was" — and without this the only way to find out is to
-    read Redis by hand.
-
-    Returns the summary, the active topic, learned preferences, and a
-    DESCRIPTION of the cached retrieval. Never the chunk text: those are
-    copyrighted passages, and this endpoint would otherwise be a way to
-    extract the corpus a session at a time.
-    """
     get_agent()   # ensures _memory is built
     loaded = _memory.load(user_id, str(session_id))
     return {
