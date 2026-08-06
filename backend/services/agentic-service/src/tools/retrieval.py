@@ -36,7 +36,6 @@ def _chunk_dict(hit) -> dict[str, Any]:
 def register_retrieval_tools(registry: ToolRegistry, vectors) -> None:
 
     def _tier_for(confidence: float) -> tuple[float, float] | None:
-        """(title leg weight, general leg weight), or None to skip the leg."""
         for threshold, w_title, w_general in _TITLE_TIERS:
             if confidence >= threshold:
                 return w_title, w_general
@@ -129,6 +128,8 @@ def register_retrieval_tools(registry: ToolRegistry, vectors) -> None:
 
             if title_hits:
                 title_hits = fuse_bm25(query, title_hits)
+                logger.info("  title leg: %s", [h.chunk_id for h in title_hits[:10]])
+                logger.info("  general leg: %s", [h.chunk_id for h in hits[:10]])
                 hits = _rrf([(w_general, hits), (w_title, title_hits)],
                             max(budget, int(budget * _OVERFETCH)))
             else:
@@ -147,6 +148,13 @@ def register_retrieval_tools(registry: ToolRegistry, vectors) -> None:
             len(title_hits),
             list(response.filters_applied),
         )
+
+        for i, h in enumerate(hits, 1):
+            logger.info(
+                "  [%2d] %.5f d=%-2d s=%-2d p%-3s %r | %s",
+                i, h.score, h.dense_rank, h.sparse_rank, h.page or "?",
+                h.title, h.content[:120].replace("\n", " "),
+            )
 
         return {
             "chunks": [_chunk_dict(h) for h in hits],
