@@ -15,8 +15,9 @@ _PLANNABLE_FILTERS = frozenset({"lesson_title", "page_number", "block_type"})
 
 _MAX_BUDGET = settings.max_chunk_budget
 _OVERFETCH = settings.overfetch_factor
-_TITLE_FILTER_AT = 0.80
-_TITLE_WEIGHTS = ((0.50, 3.0), (0.40, 1.5))
+_TITLE_TIERS = ((0.80, 1.0, 0.45), (0.50, 0.7, 0.7), (0.40, 0.4, 1.0))
+
+_RRF_K = 60
 
 
 def _chunk_dict(hit) -> dict[str, Any]:
@@ -34,11 +35,28 @@ def _chunk_dict(hit) -> dict[str, Any]:
 
 def register_retrieval_tools(registry: ToolRegistry, vectors) -> None:
 
-    def _weight_for(confidence: float) -> float:
-        for threshold, weight in _TITLE_WEIGHTS:
+    def _tier_for(confidence: float) -> tuple[float, float] | None:
+        """(title leg weight, general leg weight), or None to skip the leg."""
+        for threshold, w_title, w_general in _TITLE_TIERS:
             if confidence >= threshold:
-                return weight
-        return 1.0
+                return w_title, w_general
+        return None
+
+    def _rrf(legs: list[tuple[float, list]], limit: int) -> list:
+        scores: dict[str, float] = {}
+        best: dict[str, Any] = {}
+        for weight, hits in legs:
+            for rank, hit in enumerate(hits, 1):
+                scores[hit.chunk_id] = scores.get(hit.chunk_id, 0.0) + weight / (_RRF_K + rank)
+                best.setdefault(hit.chunk_id, hit)
+
+        ordered = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:limit]
+        out = []
+        for chunk_id, score in ordered:
+            hit = best[chunk_id]
+            hit.score = score
+            out.append(hit)
+        return out
 
     def hybrid_search(*, user_id: UUID, session_id: str, query: str,
                       lesson_title: str = "", title_confidence: float = 0.0,
@@ -61,10 +79,7 @@ def register_retrieval_tools(registry: ToolRegistry, vectors) -> None:
             elif key not in _PLANNABLE_FILTERS:
                 logger.info("plan proposed non-filterable key %r; ignored", key)
 
-        as_filter = (
-            title_as == "filter"
-            or (title_as == "auto" and title_confidence >= _TITLE_FILTER_AT)
-        )
+        as_filter = title_as == "filter"
         if lesson_title and as_filter:
             applied["lesson_title"] = lesson_title
 
@@ -97,23 +112,39 @@ def register_retrieval_tools(registry: ToolRegistry, vectors) -> None:
         if hits:
             hits = fuse_bm25(query, hits)
 
-        weight = _weight_for(title_confidence)
-        if lesson_title and not as_filter and hits and weight > 1.0:
-            for h in hits:
-                if h.title == lesson_title:
-                    h.score *= weight
-            hits = sorted(hits, key=lambda h: h.score, reverse=True)
+        tier = _tier_for(title_confidence) if lesson_title else None
+        title_hits: list = []
+
+        if tier and not as_filter:
+            w_title, w_general = tier
+            title_response = vectors.search(SearchRequest(
+                query=query, language="si",
+                limit=max(budget, int(budget * _OVERFETCH)),
+                filters={**{k: v for k, v in applied.items()
+                            if k in ("user_id", "doc_id")},
+                         "lesson_title": lesson_title},
+                mode="hybrid",
+            ))
+            title_hits = title_response.hits
+
+            if title_hits:
+                title_hits = fuse_bm25(query, title_hits)
+                hits = _rrf([(w_general, hits), (w_title, title_hits)],
+                            max(budget, int(budget * _OVERFETCH)))
+            else:
+                logger.info("title leg returned nothing for %r", lesson_title)
 
         hits = diversify(hits, budget)
 
         logger.info(
             "search %r -> %d hits (dense/sparse=%d/%d) title=%r conf=%.2f "
-            "mode=%s filters=%s",
+            "mode=%s title_leg=%d filters=%s",
             query, len(hits),
             sum(1 for h in hits if h.dense_rank),
             sum(1 for h in hits if h.sparse_rank),
             lesson_title, title_confidence,
-            "filter" if as_filter else f"weight x{weight}",
+            "filter" if as_filter else ("rrf" if tier else "none"),
+            len(title_hits),
             list(response.filters_applied),
         )
 
@@ -139,16 +170,18 @@ def register_retrieval_tools(registry: ToolRegistry, vectors) -> None:
         name="hybrid_search",
         description=(
             "Search the student's own documents. Runs dense (BGE-M3) and "
-            "sparse retrieval, fuses with RRF, then BM25 and de-duplication"),
+            "sparse retrieval plus an optional lesson-scoped leg, fuses them "
+            "with RRF, then BM25 and de-duplication"),
         args={
             "query": "what to search for — the SUBJECT, not the request wrapper",
             "lesson_title": "an EXACT title from list_lesson_titles, or empty",
-            "title_confidence": "0.0-1.0; >=0.8 restricts the search to that "
-                                "lesson, >=0.4 ranks it higher, below is ignored",
+            "title_confidence": "0.0-1.0; >=0.4 runs a second search restricted "
+                                "to that lesson and fuses it in, weighted by "
+                                "confidence. Below 0.4 the title is ignored",
             "filters": "optional: page_number, block_type",
             "budget": "how many chunks to return, 1-40",
-            "title_as": "'auto' grades on title_confidence; 'filter' or "
-                        "'boost' force the mode",
+            "title_as": "'auto' grades on title_confidence; 'filter' forces a "
+                        "hard filter",
         },
         run=hybrid_search,
     ))
