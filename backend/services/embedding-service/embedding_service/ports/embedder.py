@@ -1,16 +1,6 @@
 """
 ports/embedder.py
 =================
-
-PURPOSE
--------
-The seam between the pipeline and whatever produces dense vectors. Ingest embeds
-chunks; search embeds the query. Both go through THIS interface, so the embedding
-model (Gemini today, something else tomorrow) is one adapter swap, and tests use
-a fake -- no API calls.
-
-THE CONTRACT
-------------
     embed_documents(texts) -> list[list[float]]   # for chunks at ingest
     encode_documents(texts)  -> list[(indices, values)]              # sparse TF
 

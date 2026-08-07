@@ -1,11 +1,4 @@
-# embedding_service/adapter/sparse_encoder.py
 """
-Sinhala-aware sparse encoder. Emits raw term frequencies -- Qdrant computes IDF
-server-side (Modifier.IDF), so the vocab can grow without re-encoding old points.
-
-The vocab is a BUILD ARTIFACT. Drift between index-time and query-time vocab =
-silent retrieval garbage.
-
 THREAD SAFETY
 -------------
 This object is shared by every thread in the process: the Kafka consumer on the

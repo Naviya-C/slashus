@@ -1,4 +1,3 @@
-# embedding_service/messaging/consumer.py
 """
 Consumes ChunkCreatedEvent messages, embeds them in BATCHES, and upserts into
 Qdrant.
