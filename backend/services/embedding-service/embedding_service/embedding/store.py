@@ -24,7 +24,6 @@ def embed_and_store_chunks(
     chunks,
     collection: str,
     deps: EmbedDeps,
-    require_title: bool = True,
 ) -> int:
     """Embed and upsert a BATCH of chunks. Returns how many were stored.
     """
@@ -36,8 +35,10 @@ def embed_and_store_chunks(
             log.warning("skipping chunk %s: empty embed_text", cid)
             continue
 
+        """
         if not should_embed(c, require_title=require_title):
             continue
+        """
 
         keep.append(c)
 
@@ -75,14 +76,12 @@ def embed_and_store_chunk(
     chunk,
     collection: str,
     deps: EmbedDeps,
-    require_title: bool = True,
 ) -> bool:
     return (
         embed_and_store_chunks(
             chunks=[chunk],
             collection=collection,
             deps=deps,
-            require_title=require_title,
         )
         == 1
     )

@@ -1,4 +1,3 @@
-# adapters/local_embedder.py
 from sentence_transformers import SentenceTransformer
 
 class LocalEmbedder:
@@ -8,7 +7,7 @@ class LocalEmbedder:
 
     def __init__(self):
         self._model = SentenceTransformer(self.MODEL)
-
+ 
     def embed_documents(self, texts):
         return self._model.encode(texts, batch_size=16,
                                   normalize_embeddings=True).tolist()
