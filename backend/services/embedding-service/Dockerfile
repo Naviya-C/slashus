@@ -1,10 +1,3 @@
-# Embedding service image (Kafka worker: doc.chunks -> embed -> Qdrant).
-#
-# Build from the REPO ROOT (must contain `embedding-service/` and `shared/contracts/`):
-#   docker build -f embedding-service/Dockerfile -t embedding-service .
-#
-# RUN EXACTLY ONE INSTANCE — the sparse encoder writes a shared vocab file and is
-# single-writer. Do not scale this service horizontally.
 FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
@@ -34,7 +27,6 @@ RUN pip install -r /app/requirements.txt
 COPY services/embedding-service/embedding_service /app/embedding_service
 
 # writable dir for the sparse vocab (SPARSE_VOCAB_PATH default lives here).
-# In production, mount a persistent volume here so the vocab survives restarts.
 RUN mkdir -p /app/_store && useradd --create-home appuser && chown -R appuser /app/_store
 USER appuser
 
