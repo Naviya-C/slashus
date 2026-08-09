@@ -66,6 +66,12 @@ func (l *LoginUseCase) Login(email, password string) (string, string, error) {
 		l.recordFailure(email)
 		return "", "", ErrInvalidCredentials
 	}
+	
+	if user.PasswordHash == "" {
+		_ = l.passwordService.Verify(password, dummyHash)
+		l.recordFailure(email)
+		return "", "", ErrInvalidCredentials
+	}
 
 	if err := l.passwordService.Verify(password, user.PasswordHash); err != nil {
 		l.recordFailure(email)

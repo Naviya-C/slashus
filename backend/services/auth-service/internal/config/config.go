@@ -24,6 +24,8 @@ type Config struct {
 
 	RedisURL string
 	DevMode bool
+	GoogleClientID string
+	OAuthAutoLink  bool
 }
 
 func LoadEnv() (*Config, error) {
@@ -40,6 +42,8 @@ func LoadEnv() (*Config, error) {
 		AccessTTL:      getDuration("ACCESS_TOKEN_TTL", 15*time.Minute),
 		RefreshTTL:     getDuration("REFRESH_TOKEN_TTL", 30*24*time.Hour),
 		DevMode:        os.Getenv("DEV_MODE") == "true",
+		GoogleClientID: os.Getenv("GOOGLE_CLIENT_ID"),
+		OAuthAutoLink:  os.Getenv("OAUTH_AUTO_LINK") == "true",
 	}
 
 	var missing []string

@@ -49,6 +49,7 @@ func NewAuthHandler(
 	logoutUseCase *usecase.LogoutUseCase,
 	refreshTTL time.Duration,
 	userProfileUseCase	*usecase.ProfileUseCase,
+	googleLoginUseCase	*usecase.GoogleLoginUseCase,
 ) *AuthHandler {
 	return &AuthHandler{
 		registerUseCase: registerUsecase,
@@ -61,6 +62,7 @@ func NewAuthHandler(
 		userProfileUseCase:	userProfileUseCase,
 		// delete production
 		sameSite:      sameSiteFromEnv(),
+		googleLoginUseCase: googleLoginUseCase,
 	}
 }
 

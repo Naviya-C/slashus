@@ -84,6 +84,22 @@ func run(log *slog.Logger) error {
 
 	userProfileUseCase := usecase.NewProfileUseCase(userRepo)
 
+	oauthRepo := infraRepo.NewPostgresOAuthRepository(db)
+
+	var googleLoginUseCase *usecase.GoogleLoginUseCase
+	if cfg.GoogleClientID != "" {
+		verifier, vErr := service.NewGoogleVerifier(cfg.GoogleClientID)
+		if vErr != nil {
+			return vErr
+		}
+		googleLoginUseCase = usecase.NewGoogleLoginUseCase(
+			userRepo, oauthRepo, verifier, jwtService, cfg.OAuthAutoLink,
+		)
+		log.Info("google sign-in enabled", "auto_link", cfg.OAuthAutoLink)
+	} else {
+		log.Warn("GOOGLE_CLIENT_ID not set — google sign-in is DISABLED")
+	}
+
 	// --- handlers -------------------------------------------------------
 	authHandler := handler.NewAuthHandler(
 		registerUsecase,
@@ -92,6 +108,7 @@ func run(log *slog.Logger) error {
 		logoutUseCase,
 		cfg.RefreshTTL, // cookie expiry must match the DB expiry, so it is injected
 		userProfileUseCase,
+		googleLoginUseCase,
 	)
 	jwksHandler := handler.NewJWKSHandler(keys)
 
