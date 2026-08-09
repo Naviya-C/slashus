@@ -25,22 +25,10 @@ def embed_and_store_chunks(
     collection: str,
     deps: EmbedDeps,
 ) -> int:
-    """Embed and upsert a BATCH of chunks. Returns how many were stored.
     """
-    keep = []
-    for c in chunks:
-        cid = c.extra.get("chunk_id", "<unknown>")
-
-        if not c.embed_text or not c.embed_text.strip():
-            log.warning("skipping chunk %s: empty embed_text", cid)
-            continue
-
-        """
-        if not should_embed(c, require_title=require_title):
-            continue
-        """
-
-        keep.append(c)
+    Embed and upsert a BATCH of chunks. Returns how many were stored.
+    """
+    keep = [c for c in chunks if should_embed(c)]
 
     if not keep:
         return 0

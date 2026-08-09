@@ -1,7 +1,4 @@
 """
-src/api/server.py
-=================
-
     POST /api/v1/chat              the agent — explain, generate, clarify
     POST /api/v1/mark              grade a submission
     GET  /api/v1/sessions          sidebar list (keyset paginated)
@@ -22,16 +19,6 @@ present, never stripped:
                             | "clarification" | "blocked"
     is_question_generation  bool — open the practice panel
     render_target           "chat" | "practice_panel"
-
-`kind` is unchanged and still correct, so existing frontend code keeps
-working. The flags exist because branching on `kind == "questions"` is a
-string comparison repeated at every call site that breaks silently the day a
-fifth kind appears — and `clarification` is that fifth kind.
-
-`kind: "clarification"` is new: the agent decided the request was too vague to
-act on and is asking back. It renders in chat like a message, but it is not an
-answer, and treating it as one would put an unanswered question into the
-session summary as though it were resolved.
 """
 
 from __future__ import annotations

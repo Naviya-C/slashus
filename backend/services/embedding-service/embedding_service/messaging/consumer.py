@@ -121,18 +121,17 @@ def run(deps: EmbedDeps | None = None) -> None:
                 consumer.commit(asynchronous=False)
                 continue
 
-            groups: dict[tuple[str, bool], list] = defaultdict(list)
+            groups: dict[str, list] = defaultdict(list)
             for e in events:
-                groups[(e.collection, e.require_title)].append(e.chunk)
+                groups[e.collection].append(e.chunk)
 
             try:
                 stored = 0
-                for (collection, require_title), chunks in groups.items():
+                for collection, chunks in groups.items():
                     stored += embed_and_store_chunks(
                         chunks=chunks,
                         collection=collection,
                         deps=deps,
-                        require_title=require_title,
                     )
 
                 consumer.commit(asynchronous=False)

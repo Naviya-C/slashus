@@ -41,9 +41,7 @@ class Chunk:
 
     def to_dict(self) -> dict:
         d = asdict(self)
-        d["type"] = self.type.value          # enum -> "text"/"table"/"image"
-        # bbox is a tuple; json has no tuples, so it round-trips as a list.
-        # normalize on the way out so both sides see the same shape.
+        d["type"] = self.type.value         
         d["bbox"] = list(self.bbox) if self.bbox is not None else None
         return d
 
