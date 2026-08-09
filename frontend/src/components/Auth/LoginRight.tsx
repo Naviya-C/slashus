@@ -52,7 +52,7 @@ const LoginRight = () => {
                 </h2>
 
                 {/* OAuth */}
-                <OAuth />
+                <OAuth onSuccess={goToChat}/>
 
                 {/* Divider */}
                 <div className="flex items-center mb-8">
