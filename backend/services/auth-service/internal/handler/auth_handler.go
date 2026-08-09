@@ -34,6 +34,7 @@ type AuthHandler struct {
 	logoutUseCase   		*usecase.LogoutUseCase
 	refreshTTL      		time.Duration
 	secureCookies   		bool
+	googleLoginUseCase		*usecase.GoogleLoginUseCase
 	// Remove in production
 	sameSite        		http.SameSite
 	
