@@ -70,7 +70,7 @@ const SignUpRight = () => {
                 </p>
 
                 {/* OAuth */}
-                <OAuth />
+                <OAuth onSuccess={goToChat}/>
 
                 {/* Divider */}
                 <div className="flex items-center my-8">
