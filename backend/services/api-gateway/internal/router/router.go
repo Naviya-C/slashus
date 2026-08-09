@@ -1,14 +1,3 @@
-// Package router wires routes to backends and decides which are public.
-//
-// THE ROUTE TABLE IS THE SECURITY POLICY
-// --------------------------------------
-// Every route is either PUBLIC (no token) or PROTECTED (verified token,
-// X-User-Id injected). Getting one into the wrong group is the likeliest way
-// to open a hole, so the groups are registered separately and explicitly
-// rather than inferred from a path prefix.
-//
-// Paths match the auth service as built: /api/v1/auth/... (override with
-// AUTH_PREFIX).
 package router
 
 import (
@@ -62,8 +51,8 @@ func New(d Deps) (http.Handler, error) {
 	mux.Handle("POST "+prefix+"/register", authProxy)
 	mux.Handle("POST "+prefix+"/login", authProxy)
 	mux.Handle("POST "+prefix+"/refresh", authProxy)
-
 	mux.Handle("POST "+prefix+"/logout", authProxy)
+	mux.Handle("POST /api/v1/auth/google", authProxy)
 
 	// ---- PROTECTED ---------------------------------------------------
 	protect := func(h http.Handler) http.Handler {
@@ -73,13 +62,8 @@ func New(d Deps) (http.Handler, error) {
 		return protect(d.Limiter.Limit("api", d.Cfg.RateLimit, d.Cfg.RateWindow, h))
 	}
 
-	// logout-all needs X-User-Id, which only this gateway can inject —
-	// the auth service's routes.go expects this route to be protected.
 	mux.Handle("POST "+prefix+"/logout-all", api(authProxy))
 	mux.Handle("GET "+prefix+"/me", api(authProxy))
-
-	// Uploads are limited separately and tightly: each one costs storage plus
-	// a full ingestion run.
 	mux.Handle("POST /uploads", protect(
 		d.Limiter.Limit("upload", d.Cfg.UploadLimit, d.Cfg.UploadWindow, uploadProxy)))
 
@@ -88,10 +72,6 @@ func New(d Deps) (http.Handler, error) {
 
 	mux.Handle("GET /jobs/{id}", api(ingestionProxy))
 
-	// Paths are forwarded UNCHANGED, so these must match agentic-service's
-	// FastAPI routes exactly — including the /api/v1 prefix. A mismatch shows
-	// up as a 404 from the backend rather than from the gateway, which reads
-	// like the service is broken.
 	for _, route := range []string{
 		"POST /api/v1/chat",
 		"POST /api/v1/mark",
