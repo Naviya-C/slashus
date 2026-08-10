@@ -61,7 +61,7 @@ class MarkingService:
                 result = self._mark_written(question, item)
 
             self._repo.save_answer(
-                question_id=UUID(question_id), user_id=user_id,
+                question_id=UUID(str(question_id)), user_id=user_id,
                 selected_index=item.get("selected_index"),
                 answer_text=item.get("answer_text"), result=result,
             )
