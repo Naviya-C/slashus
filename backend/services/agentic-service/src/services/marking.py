@@ -29,8 +29,6 @@ from prompts import pool
 
 logger = logging.getLogger(__name__)
 
-# Below this the student sees the model answer. A learning threshold, not a
-# grade boundary — see MARK_WRITTEN.md.
 _REVEAL_BELOW = 5.0
 _MAX_CHARS_PER_CHUNK = 1200
 
@@ -39,8 +37,6 @@ class MarkingService:
     def __init__(self, llm, repo=None) -> None:
         self._llm = llm
         self._repo = repo
-
-    # ------------------------------------------------------------------
 
     def mark(self, *, user_id: UUID, submission: list) -> dict[str, Any]:
         if self._repo is None:
@@ -53,11 +49,8 @@ class MarkingService:
             question_id = item.get("question_id")
             if not question_id:
                 continue
-
-            # Scoped by user_id: question ids travel to the browser, so a
-            # submission could name someone else's question. Returns None
-            # rather than raising when it is not this user's.
-            question = self._repo.get_question(UUID(question_id), user_id)
+            
+            question = self._repo.get_question(UUID(str(question_id)), user_id)
             if question is None:
                 logger.warning("submission for unknown/foreign question %s", question_id)
                 continue
@@ -87,13 +80,10 @@ class MarkingService:
             "results": results,
             "total_marks": total,
             "total_max": out_of,
-            # Fed back into conversation memory, so a later "give me practice"
-            # can target what the student actually got wrong.
             "weak_areas": weak,
             "summary": f"{total} out of {out_of}.",
         }
 
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _mark_choice(question: dict, item: dict) -> dict[str, Any]:
@@ -108,29 +98,18 @@ class MarkingService:
             "marks": float(question["max_marks"]) if is_correct else 0.0,
             "max_marks": question["max_marks"],
             "is_correct": is_correct,
-            # The explanation was generated with the question and teaches
-            # regardless of outcome — a student who guessed right still needs
-            # to know why.
             "feedback": question.get("explanation") or (
                 "Correct." if is_correct else "That's not right."),
             "rubric_breakdown": [],
             "revealed_answer": None if is_correct else question["options"][correct]["text"],
         }
 
-    # ------------------------------------------------------------------
-
     def _mark_written(self, question: dict, item: dict) -> dict[str, Any]:
         answer = str(item.get("answer_text", "")).strip()
 
         if not answer:
-            # Short-circuit before the LLM. An empty answer scores zero
-            # whatever a model says about it.
             return self._zero(question, "No answer was submitted.",
                               question.get("model_answer"))
-
-        # The chunks the question was WRITTEN from, not a fresh retrieval.
-        # Re-retrieving at marking time surfaces different passages, and then
-        # the marker grades against material the question was never based on.
         sources = self._repo.get_question_sources(question["id"])
 
         try:
@@ -146,29 +125,19 @@ class MarkingService:
                         for s in sources) or "(source material unavailable)",
                     answer=answer,
                 ),
-                # Marking must be reproducible: the same answer gets the same
-                # mark twice. That is the whole reason for temperature 0.
                 temperature=0.0,
             )
         except Exception:
             logger.exception("written marking failed")
-            # Distinguished from a genuine zero, so the frontend can offer a
-            # retry rather than showing a failing mark for a server problem.
             return self._zero(question, "Marking failed. Please try again.", None)
 
         marks = max(0.0, min(float(data.get("marks", 0)), float(question["max_marks"])))
-
-        # The reveal decision is made HERE, not taken from the model. It is
-        # asked for in the prompt, but a threshold rule is not something to
-        # leave to a generation that might ignore it.
         reveal = marks < _REVEAL_BELOW
 
         return {
             "question_id": str(question["id"]),
             "marks": round(marks, 1),
             "max_marks": question["max_marks"],
-            # None, not a bool: a written answer is graded on a scale, and
-            # forcing it to correct/incorrect throws away what the mark says.
             "is_correct": None,
             "feedback": str(data.get("feedback", "")).strip(),
             "rubric_breakdown": data.get("rubric_breakdown", []),
@@ -177,10 +146,6 @@ class MarkingService:
 
     @staticmethod
     def _zero(question: dict, feedback: str, reveal: str | None) -> dict[str, Any]:
-        # No extra keys: api/server.py does QuestionResult(**r), so anything
-        # not on that dataclass raises TypeError — which once turned one
-        # recoverable marking failure into a 500 for the whole submission,
-        # including questions that marked fine.
         return {
             "question_id": str(question["id"]),
             "marks": 0.0,
