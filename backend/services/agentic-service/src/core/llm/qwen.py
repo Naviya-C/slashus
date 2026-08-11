@@ -1,19 +1,8 @@
 """
-src/core/llm/qwen.py
-====================
-Alibaba Model Studio (DashScope) client, interface-compatible with LLMClient
-and GroqClient.
-
-Same shape as the others on purpose: `generate` and `generate_json` with the
-same signatures, so every agent accepts any of the three without changes.
-
-Uses the native dashscope SDK rather than the OpenAI-compatible endpoint,
-because the native one exposes `enable_thinking` directly — which matters
-here.
-
-Qwen3.5 / Qwen3.6 series require MultiModalConversation (not Generation).
-Calling Generation with those models returns: "url error, please check url！"
+Alibaba Model Studio (DashScope) client, interface-compatible with LLMClient.
+use --- Qwen 3.6 plus ---
 """
+
 from __future__ import annotations
 
 import logging
@@ -28,31 +17,28 @@ from core.llm.client import extract_json
 
 logger = logging.getLogger(__name__)
 
-# International endpoint (Singapore). The Mainland China one is a different
-# host AND a different API key — a key from one will not work against the
-# other, and the error is an unhelpful 401.
 dashscope.base_http_api_url = "https://dashscope-intl.aliyuncs.com/api/v1"
 
-# Retrying these can never succeed: the request is wrong, not unlucky.
 _NON_RETRYABLE = {400, 401, 403, 404}
 
 def _normalize_content(content: Any) -> str:
-    """MultiModalConversation returns list[{'text': ...}]; plain str is also fine."""
     if content is None:
         return ""
     if isinstance(content, str):
         return content
     if isinstance(content, list):
         parts: list[str] = []
+        
         for item in content:
             if isinstance(item, str):
                 parts.append(item)
             elif isinstance(item, dict):
-                # shapes: {"text": "..."} or {"type": "text", "text": "..."}
                 text = item.get("text")
                 if text is not None:
                     parts.append(str(text))
+                    
         return "".join(parts)
+    
     return str(content)
 
 class QwenClient:
@@ -63,12 +49,18 @@ class QwenClient:
     ) -> None:
         self.model = model or settings.qwen_model
         self._api_key = api_key or settings.qwen_api_key
+        
         if not self._api_key:
             raise RuntimeError("QWEN_API_KEY (DASHSCOPE_API_KEY) is not set")
 
-    # ------------------------------------------------------------------
     def _call(self, prompt: str, temperature: float, json_mode: bool) -> str:
-        messages = [{"role": "user", "content": prompt}]
+        messages = [
+            {
+                "role": "user", 
+                "content": prompt
+            }
+        ]
+        
         kwargs: dict[str, Any] = {
             "api_key": self._api_key,
             "model": self.model,
@@ -77,6 +69,7 @@ class QwenClient:
             "enable_thinking": False,
             "temperature": temperature,
         }
+        
         if getattr(settings, "llm_max_output_tokens", None):
             kwargs["max_tokens"] = settings.llm_max_output_tokens
         if json_mode:
@@ -104,8 +97,16 @@ class QwenClient:
         choices = getattr(response.output, "choices", None) or []
         if not choices:
             raise RuntimeError(f"DashScope returned no choices: {response}")
+    
+
+        finish_reason = getattr(choices[0], "finish_reason", None)
+        logger.info(
+            "DashScope finish reason: %s",
+            finish_reason,
+        )
 
         raw = choices[0].message.content
+        
         logger.debug(
             "DashScope content type=%s sample=%r",
             type(raw).__name__,
@@ -116,7 +117,6 @@ class QwenClient:
     def _is_non_retryable(self, exc: Exception) -> bool:
         return any(f"DashScope {code}" in str(exc) for code in _NON_RETRYABLE)
 
-    # ------------------------------------------------------------------
     def generate(
         self,
         prompt: str,
@@ -130,8 +130,6 @@ class QwenClient:
                 return self._call(prompt, temperature, json_mode)
             except Exception as exc:
                 if self._is_non_retryable(exc):
-                    # A wrong model name or bad key is configuration, not bad
-                    # luck. Three retries with backoff only delay the message.
                     logger.error(
                         "DashScope request rejected (not retryable): %s", exc
                     )
