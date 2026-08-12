@@ -8,6 +8,6 @@ export const useNav = () => {
         goToRegister: () => navigate("/register"),
         goToHome: () => navigate("/"),
         goToHow: () => navigate("/how"),
-        goToChat: () => navigate("/chat")
+        goToChat: () => navigate("/chat"),
     };
-}
+};

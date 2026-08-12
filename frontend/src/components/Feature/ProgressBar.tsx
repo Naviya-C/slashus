@@ -1,15 +1,13 @@
 import type { Progress } from "./types";
 
 interface Props {
-  item: Progress;
+    item: Progress;
 }
 
-export default function ProgressBar({
-  item,
-}: Props) {
-  return (
-    <div
-      className="
+export default function ProgressBar({ item }: Props) {
+    return (
+        <div
+            className="
         mb-4
         grid
         grid-cols-[70px_1fr_35px]
@@ -19,33 +17,30 @@ export default function ProgressBar({
         sm:grid-cols-[90px_1fr_40px]
         sm:gap-4
       "
-    >
-      {/* Label */}
-      <span
-        className="
+        >
+            <span
+                className="
           truncate
           font-mono
           text-[11px]
           text-zinc-500
           sm:text-sm
         "
-      >
-        {item.name}
-      </span>
+            >
+                {item.name}
+            </span>
 
-      {/* Progress Track */}
-      <div className="h-1 overflow-hidden rounded-full bg-white/5">
-        <div
-          className={`h-full rounded-full transition-all duration-1000 ${item.color}`}
-          style={{
-            width: `${item.value}%`,
-          }}
-        />
-      </div>
+            <div className="h-1 overflow-hidden rounded-full bg-white/5">
+                <div
+                    className={`h-full rounded-full transition-all duration-1000 ${item.color}`}
+                    style={{
+                        width: `${item.value}%`,
+                    }}
+                />
+            </div>
 
-      {/* Percentage */}
-      <span
-        className="
+            <span
+                className="
           text-right
           font-mono
           text-[11px]
@@ -53,9 +48,9 @@ export default function ProgressBar({
           text-zinc-300
           sm:text-sm
         "
-      >
-        {item.value}%
-      </span>
-    </div>
-  );
+            >
+                {item.value}%
+            </span>
+        </div>
+    );
 }

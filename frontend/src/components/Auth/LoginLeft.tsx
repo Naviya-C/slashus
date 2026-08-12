@@ -3,38 +3,36 @@ import AuthFooter from "./AuthFooter";
 import logo from "../../assets/logo_black.svg";
 import { useNav } from "../../Hooks/useNav";
 
-
 const LoginLeft = () => {
-    const {goToHome} = useNav();
+    const { goToHome } = useNav();
 
-    return(
+    return (
         <div
             className="
                 w-full
-                min-h-screen
+                h-full
                 bg-slate-950
                 text-white
                 flex
                 flex-col
                 justify-between
-                p-16
+                p-10
+                xl:p-12
             "
-            >
-            <div
-                className="py-2"
-            >
+        >
+            <div className="py-2">
                 <img
                     onClick={goToHome}
                     src={logo}
                     alt="SLASHUS"
-                    className="w-30 mb-12 cursor-pointer"
+                    className="mb-7 w-30 cursor-pointer"
                 />
 
                 <AuthHero />
 
                 <button
                     className="
-                        mt-10
+                        mt-6
                         px-6
                         py-3
                         rounded-xl
@@ -52,6 +50,6 @@ const LoginLeft = () => {
             <AuthFooter />
         </div>
     );
-}
+};
 
 export default LoginLeft;

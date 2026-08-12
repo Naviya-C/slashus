@@ -1,9 +1,10 @@
-const AuthHero =() => {
-    return(
+const AuthHero = () => {
+    return (
         <>
             <h1
                 className="
-                    text-5xl
+                    text-4xl
+                    xl:text-5xl
                     font-bold
                     leading-tight
                     max-w-lg
@@ -18,19 +19,20 @@ const AuthHero =() => {
 
             <p
                 className="
-                    mt-8
+                    mt-5
                     text-slate-300
-                    text-lg
+                    text-base
+                    xl:text-lg
                     max-w-xl
                     leading-relaxed
                 "
             >
-                SLASHUS helps students learn from Sinhala
-                educational content through question generation,
-                self-assessment, and intelligent evaluation.
+                SLASHUS helps students learn from Sinhala educational content
+                through question generation, self-assessment, and intelligent
+                evaluation.
             </p>
         </>
     );
-}
+};
 
 export default AuthHero;

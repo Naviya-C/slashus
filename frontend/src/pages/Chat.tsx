@@ -1,145 +1,96 @@
-import { useState } from "react";
-
-import Logo from "../components/Atomic/Logo";
-import ChatInput from "../components/Chat/ChatInput";
-import DocumentList, { MAX_SELECTED } from "../components/Chat/DocumentList";
-import FileDropzone from "../components/Chat/FileDropZone";
-import UserMenu from "../components/Chat/UserMenu";
-import { useDocuments } from "../Hooks/useDocuments";
-import MessageCard from "../components/Chat/MessageCard";
+import { useCallback, useState } from "react";
 
 import { useChat } from "../Hooks/useChat";
-import SessionList from "../components/Chat/SessionList";
+import { useDocuments } from "../Hooks/useDocuments";
+import { MAX_SELECTED } from "../components/Chat/DocumentList";
+import ChatHeader from "../components/Chat/ChatHeader";
+import ChatSidebar from "../components/Chat/ChatSidebar";
+import ChatWorkspace from "../components/Chat/ChatWorkspace";
+import MobileChatDrawer from "../components/Chat/MobileChatDrawer";
 import PracticePanel from "../components/Chat/PracticePanel";
+import PanelResizer from "../components/Chat/PanelResizer";
 
-function Chat() {
+export default function Chat() {
     const { documents, loading, error, refetch } = useDocuments();
     const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
+    const [drawerOpen, setDrawerOpen] = useState(false);
+    const [leftWidth, setLeftWidth] = useState(304);
+    const [rightWidth, setRightWidth] = useState(520);
     const chat = useChat(selectedDocIds);
 
-    function toggleSelect(docId: string) {
-        setSelectedDocIds((prev) =>
-            prev.includes(docId)
-                ? prev.filter((id) => id !== docId)
-                : prev.length >= MAX_SELECTED
-                ? prev
-                : [...prev, docId],
+    const toggleSelect = useCallback((docId: string) => {
+        setSelectedDocIds((current) =>
+            current.includes(docId)
+                ? current.filter((id) => id !== docId)
+                : current.length >= MAX_SELECTED
+                  ? current
+                  : [...current, docId],
         );
-    }
+    }, []);
 
-    const hasSelection = selectedDocIds.length > 0;
+    const closeDrawer = useCallback(() => setDrawerOpen(false), []);
+
+    const sidebarProps = {
+        documents,
+        loading,
+        error,
+        selectedDocIds,
+        activeSessionId: chat.sessionId,
+        refreshKey: chat.messages.length,
+        onUploaded: refetch,
+        onToggleSelect: toggleSelect,
+        onOpenSession: chat.openSession,
+    };
 
     return (
-        <div className="h-screen flex flex-col overflow-hidden bg-neutral-950 text-neutral-100">
-            {/* Header */}
-            <header className="h-16 shrink-0 border-b border-neutral-800 flex items-center justify-between px-6">
-                <div className="m-2 pl-5 hover:cursor-pointer">
-                    <Logo />
-                </div>
+        <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-neutral-950 text-neutral-100">
+            <ChatHeader
+                onOpenTools={() => setDrawerOpen(true)}
+                onNewChat={chat.newSession}
+            />
 
-                <UserMenu />
-            </header>
-
-            <div className="flex-1 flex min-h-0">
-                {/* Left Sidebar */}
-                <aside className="w-72 shrink-0 border-r border-neutral-800 flex flex-col min-h-0">
-
-                    {/* ---------- TOP HALF ---------- */}
-                    <div className="flex-1 min-h-0 flex flex-col border-b border-neutral-800">
-
-                        {/* Upload */}
-                        <div className="shrink-0 px-2 pt-5">
-                            <span className="px-3 text-xs tracking-widest text-neutral-500">
-                                01 / UPLOADS
-                            </span>
-
-                            <div className="mt-2">
-                                <FileDropzone onUploaded={refetch} />
-                            </div>
-                        </div>
-
-                        {/* Documents */}
-                        <div className="flex-1 min-h-0 flex flex-col px-2 pt-5">
-                            <span className="px-3 text-xs tracking-widest text-neutral-500">
-                                02 / DOCUMENTS
-                            </span>
-
-                            <div className="mt-3 flex-1 overflow-y-auto">
-                                <DocumentList
-                                    documents={documents}
-                                    loading={loading}
-                                    error={error}
-                                    selectedDocIds={selectedDocIds}
-                                    onToggleSelect={toggleSelect}
-                                    onRename={(doc) => console.log("rename", doc)}
-                                    onDelete={(doc) => console.log("delete", doc)}
-                                    onDownload={(doc) => console.log("download", doc)}
-                                />
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* ---------- BOTTOM HALF ---------- */}
-                    <div className="flex-1 min-h-0 flex flex-col">
-
-                        <div className="shrink-0 px-2 pt-5">
-                            <span className="px-3 text-xs tracking-widest text-neutral-500">
-                                03 / SESSIONS
-                            </span>
-                        </div>
-
-                        <div className="flex-1 min-h-0 overflow-y-auto px-2 pt-3">
-                            <SessionList
-                                activeId={chat.sessionId}
-                                onOpen={chat.openSession}
-                                refreshKey={chat.messages.length}
-                            />
-                        </div>
-                    </div>
-
+            <div className="flex min-h-0 flex-1">
+                <aside
+                    className="hidden shrink-0 lg:block"
+                    style={{ width: leftWidth }}
+                >
+                    <ChatSidebar {...sidebarProps} />
                 </aside>
+                <PanelResizer
+                    label="Resize resources panel"
+                    value={leftWidth}
+                    min={240}
+                    max={420}
+                    resetValue={304}
+                    side="left"
+                    onChange={setLeftWidth}
+                />
 
-                {/* Chat */}
-                <main className="flex-1 flex flex-col min-h-0">
-                    <div className="flex-1 overflow-y-auto px-6 py-4">
-                        {chat.messages.map((m) => (
-                            <MessageCard
-                                key={m.id}
-                                role={m.role}
-                                content={m.content}
-                                citations={m.citations}
-                                reason={m.reason}
-                            />
-                        ))}
-                    </div>
+                <ChatWorkspace
+                    messages={chat.messages}
+                    sending={chat.sending}
+                    loadingSession={chat.loadingSession}
+                    error={chat.error}
+                    hasSelection={selectedDocIds.length > 0}
+                    selectedCount={selectedDocIds.length}
+                    onSend={chat.send}
+                />
 
-                    <div className="shrink-0 mx-auto mb-6 w-full max-w-3xl px-4">
-                        {chat.sending && (
-                            <p className="mb-2 px-1 text-sm text-neutral-500">
-                                Thinking…
-                            </p>
-                        )}
-
-                        {chat.error && (
-                            <p className="mb-2 px-1 text-sm text-red-400">
-                                {chat.error}
-                            </p>
-                        )}
-
-                        <ChatInput
-                            onSend={chat.send}
-                            disabled={chat.sending}
-                            placeholder={
-                                hasSelection
-                                    ? "Ask about your materials..."
-                                    : "Write a message..."
-                            }
-                        />
-                    </div>
-                </main>
-
-                {/* Practice Panel */}
-                <aside className="w-[42rem] shrink-0 border-l border-neutral-800 overflow-y-auto">
+                <div className="hidden 2xl:flex">
+                    <PanelResizer
+                        label="Resize practice panel"
+                        value={rightWidth}
+                        min={340}
+                        max={720}
+                        resetValue={520}
+                        side="right"
+                        onChange={setRightWidth}
+                    />
+                </div>
+                <aside
+                    className="hidden shrink-0 2xl:block"
+                    style={{ width: rightWidth }}
+                >
                     <PracticePanel
                         questions={chat.questions}
                         answers={chat.answers}
@@ -150,8 +101,26 @@ function Chat() {
                     />
                 </aside>
             </div>
+
+            <MobileChatDrawer
+                open={drawerOpen}
+                documents={documents}
+                documentsLoading={loading}
+                documentsError={error}
+                selectedDocIds={selectedDocIds}
+                activeSessionId={chat.sessionId}
+                refreshKey={chat.messages.length}
+                questions={chat.questions}
+                answers={chat.answers}
+                results={chat.results}
+                marking={chat.marking}
+                onClose={closeDrawer}
+                onUploaded={refetch}
+                onToggleSelect={toggleSelect}
+                onOpenSession={chat.openSession}
+                onAnswer={chat.answer}
+                onMark={chat.mark}
+            />
         </div>
     );
 }
-
-export default Chat;

@@ -2,9 +2,9 @@ import ProgressBar from "./ProgressBar";
 import { PROGRESS } from "./features.data";
 
 export default function AccuracyCard() {
-  return (
-      <div
-        className="
+    return (
+        <div
+            className="
           w-full
           overflow-hidden
           rounded-[28px]
@@ -18,14 +18,12 @@ export default function AccuracyCard() {
           md:p-8
           shadow-[0_25px_80px_rgba(0,0,0,0.25)]
         "
-      >
-      <p className="font-mono text-[11px] uppercase tracking-[0.25em] text-zinc-600">
-      // overall_accuracy — last_30_days
-      </p>
+        >
+            <p className="font-mono text-[11px] uppercase tracking-[0.25em] text-zinc-600"></p>
 
-      <div className="mt-6 md:mt-8 flex items-end">
-        <span
-          className="
+            <div className="mt-6 md:mt-8 flex items-end">
+                <span
+                    className="
             font-mono
             font-black
             text-white
@@ -33,12 +31,12 @@ export default function AccuracyCard() {
             sm:text-6xl
             lg:text-7xl
           "
-        >
-          98
-        </span>
+                >
+                    98
+                </span>
 
-        <span
-          className="
+                <span
+                    className="
             ml-1
             mb-2
             md:mb-3
@@ -47,13 +45,13 @@ export default function AccuracyCard() {
             text-lg
             md:text-xl
           "
-        >
-          .2%
-        </span>
-      </div>
+                >
+                    .2%
+                </span>
+            </div>
 
-      <div
-        className="
+            <div
+                className="
           mt-6
           md:mt-8
           inline-flex
@@ -66,32 +64,27 @@ export default function AccuracyCard() {
           md:px-4
           py-2
         "
-      >
-        <span
-          className="
+            >
+                <span
+                    className="
             font-mono
             text-[10px]
             sm:text-xs
             font-semibold
             text-emerald-400
           "
-        >
-          ↖ +1.4% vs_prev_month
-        </span>
-      </div>
+                >
+                    ↖ +1.4% vs_prev_month
+                </span>
+            </div>
 
-      <div className="mt-14">
-        <p className="mb-8 font-mono text-[11px] uppercase tracking-[0.25em] text-zinc-600">
-          // scorer_breakdown
-        </p>
+            <div className="mt-14">
+                <p className="mb-8 font-mono text-[11px] uppercase tracking-[0.25em] text-zinc-600"></p>
 
-        {PROGRESS.map((item) => (
-          <ProgressBar
-            key={item.name}
-            item={item}
-          />
-        ))}
-      </div>
-    </div>
-  );
+                {PROGRESS.map((item) => (
+                    <ProgressBar key={item.name} item={item} />
+                ))}
+            </div>
+        </div>
+    );
 }

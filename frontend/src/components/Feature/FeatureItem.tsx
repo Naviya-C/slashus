@@ -1,17 +1,14 @@
 import type { Feature } from "./types";
 
 interface Props {
-  feature: Feature;
+    feature: Feature;
 }
 
-export default function FeatureItem({
-  feature,
-}: Props) {
-  return (
-    <div className="flex items-start gap-4 md:gap-5">
-      {/* Icon */}
-      <div
-        className={`
+export default function FeatureItem({ feature }: Props) {
+    return (
+        <div className="flex items-start gap-4 md:gap-5">
+            <div
+                className={`
           flex
           h-10
           w-10
@@ -23,16 +20,13 @@ export default function FeatureItem({
           md:w-11
           ${feature.color}
         `}
-      >
-        <span className="text-base md:text-lg">
-          {feature.icon}
-        </span>
-      </div>
+            >
+                <span className="text-base md:text-lg">{feature.icon}</span>
+            </div>
 
-      {/* Content */}
-      <div className="min-w-0 flex-1">
-        <h3
-          className="
+            <div className="min-w-0 flex-1">
+                <h3
+                    className="
             break-words
             font-mono
             font-bold
@@ -41,12 +35,12 @@ export default function FeatureItem({
             sm:text-xl
             lg:text-2xl
           "
-        >
-          {feature.title}
-        </h3>
+                >
+                    {feature.title}
+                </h3>
 
-        <p
-          className="
+                <p
+                    className="
             mt-2
             font-mono
             text-sm
@@ -55,10 +49,10 @@ export default function FeatureItem({
             sm:text-base
             md:mt-3
           "
-        >
-          {feature.desc}
-        </p>
-      </div>
-    </div>
-  );
+                >
+                    {feature.desc}
+                </p>
+            </div>
+        </div>
+    );
 }

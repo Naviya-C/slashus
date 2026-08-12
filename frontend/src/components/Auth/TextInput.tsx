@@ -1,9 +1,15 @@
+import type { ChangeEventHandler } from "react";
+
 interface TextInputProps {
     id: string;
     label: string;
     type?: string;
-    name: string,
-    required?: boolean,
+    name: string;
+    required?: boolean;
+    value?: string;
+    minLength?: number;
+    autoComplete?: string;
+    onChange?: ChangeEventHandler<HTMLInputElement>;
 }
 
 const TextInput = (props: TextInputProps) => {
@@ -14,6 +20,10 @@ const TextInput = (props: TextInputProps) => {
                 type={props.type}
                 name={props.name}
                 required={props.required}
+                value={props.value}
+                minLength={props.minLength}
+                autoComplete={props.autoComplete}
+                onChange={props.onChange}
                 placeholder=" "
                 className="
                     peer
@@ -54,8 +64,6 @@ const TextInput = (props: TextInputProps) => {
             </label>
         </div>
     );
-}
-
-
+};
 
 export default TextInput;

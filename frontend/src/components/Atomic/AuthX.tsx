@@ -1,8 +1,7 @@
 import { FaXTwitter } from "react-icons/fa6";
 
-
 const AuthX = () => {
-    return(  
+    return (
         <button
             disabled
             className="
@@ -20,13 +19,9 @@ const AuthX = () => {
                 disabled:hover:bg-transparent
             "
         >
-            <FaXTwitter
-                size={22}
-                className="text-black"
-            />
+            <FaXTwitter size={22} className="text-black" />
         </button>
     );
-}
-
+};
 
 export default AuthX;
