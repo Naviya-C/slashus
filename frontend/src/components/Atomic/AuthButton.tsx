@@ -1,16 +1,15 @@
-interface AuthButtonProp{
-    name: string
+interface AuthButtonProp {
+    name: string;
     type?: "button" | "submit";
-    disabled?:boolean
+    disabled?: boolean;
 }
 
 const AuthButton = (props: AuthButtonProp) => {
-    return(
+    return (
         <button
-            type = {props.type}
-            disabled = {props.disabled}
+            type={props.type}
+            disabled={props.disabled}
             className="
-                mt-8
                 w-full
                 h-14
                 rounded-full
@@ -27,7 +26,6 @@ const AuthButton = (props: AuthButtonProp) => {
             {props.name}
         </button>
     );
-}
-
+};
 
 export default AuthButton;

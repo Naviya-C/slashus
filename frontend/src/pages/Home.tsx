@@ -1,22 +1,17 @@
-import FeatureCard from '../components/Feature/Features';
-import Hero from '../components/Hero/Hero';
-import Footer from '../components/Footer/footer';
-import Navbar from '../components/Navbar/Navbar';
-import DemoWindow from '../components/DemoWindow/DemoWindow';
-import HowItWorks from '../components/HowItWork/HowWorks';
+import Hero from "../components/Hero/Hero";
+import Footer from "../components/Footer/footer";
+import Navbar from "../components/Navbar/Navbar";
+import HomeContent from "../components/Landing/HomeContent";
 
-
-function Home(){
-    return(
+function Home() {
+    return (
         <>
-            <Navbar/>
+            <Navbar />
             <Hero />
-            <DemoWindow />
-            <HowItWorks />
-            <FeatureCard />
+            <HomeContent />
             <Footer />
         </>
-    )
+    );
 }
 
 export default Home;

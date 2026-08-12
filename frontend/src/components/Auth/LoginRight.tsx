@@ -17,25 +17,27 @@ const LoginRight = () => {
 
             try {
                 await login(email, password);
-                goToChat();    
-                return null; // Clear any existing errors on success
+                goToChat();
+                return null;
             } catch (err) {
                 return err instanceof Error ? err.message : "Login failed";
             }
         },
-        null // Initial error state is null
+        null,
     );
 
     return (
         <div
             className="
                 w-full
-                min-h-screen
+                min-h-dvh
                 flex
                 items-center
                 justify-center
                 p-6
-                lg:p-12
+                lg:h-full
+                lg:min-h-0
+                lg:p-8
             "
         >
             <div className="w-full max-w-md">
@@ -45,17 +47,15 @@ const LoginRight = () => {
                         font-bold
                         text-center
                         text-slate-900
-                        mb-10
+                        mb-6
                     "
                 >
                     Welcome Back
                 </h2>
 
-                {/* OAuth */}
-                <OAuth onSuccess={goToChat}/>
+                <OAuth onSuccess={goToChat} compact />
 
-                {/* Divider */}
-                <div className="flex items-center mb-8">
+                <div className="mb-6 flex items-center">
                     <div className="flex-1 border-t border-slate-300" />
                     <span className="px-4 text-sm text-slate-500">
                         or sign in with email
@@ -63,29 +63,36 @@ const LoginRight = () => {
                     <div className="flex-1 border-t border-slate-300" />
                 </div>
 
-                <form action={formAction}>
-                    <TextInput 
+                <form action={formAction} className="space-y-4">
+                    <TextInput
                         id="email"
-                        label="Email"   
-                        type="email" 
+                        label="Email"
+                        type="email"
                         name="email"
                         required
                     />
-                    <br/>
-                    <TextInput 
+                    <TextInput
                         id="pword"
                         label="Password"
                         type="password"
                         name="password"
                         required
                     />
-                    
-                    {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
-                    
-                    <AuthButton name={isBusy ? "Logging in..." : "Login"} type="submit" disabled={isBusy} />
+
+                    {error && (
+                        <p className="text-sm text-red-600 mb-3">{error}</p>
+                    )}
+
+                    <div className="pt-3">
+                        <AuthButton
+                            name={isBusy ? "Logging in..." : "Login"}
+                            type="submit"
+                            disabled={isBusy}
+                        />
+                    </div>
                 </form>
 
-                <p className="mt-8 text-center text-slate-500">
+                <p className="mt-6 text-center text-slate-500">
                     Don't have an account?{" "}
                     <button
                         onClick={goToRegister}
@@ -102,6 +109,6 @@ const LoginRight = () => {
             </div>
         </div>
     );
-}
+};
 
 export default LoginRight;

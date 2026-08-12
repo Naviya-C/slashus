@@ -1,12 +1,12 @@
 export interface Feature {
-  title: string;
-  desc: string;
-  color: string;
-  icon: string;
+    title: string;
+    desc: string;
+    color: string;
+    icon: string;
 }
 
 export interface Progress {
-  name: string;
-  value: number;
-  color: string;
+    name: string;
+    value: number;
+    color: string;
 }

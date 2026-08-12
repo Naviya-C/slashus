@@ -3,14 +3,12 @@ import SignUpRight from "../components/Auth/SignUpRight";
 
 function SignUp() {
     return (
-        <div className="min-h-screen flex">
-            {/* Hidden on mobile */}
-            <div className="hidden lg:flex lg:w-2/5">
+        <div className="flex min-h-dvh lg:h-dvh lg:overflow-hidden">
+            <div className="hidden lg:flex lg:w-2/5 lg:overflow-hidden">
                 <LoginLeft />
             </div>
 
-            {/* Center the form */}
-            <div className="w-full lg:w-3/5 flex items-center justify-center">
+            <div className="flex w-full items-center justify-center lg:h-full lg:w-3/5 lg:overflow-hidden">
                 <SignUpRight />
             </div>
         </div>

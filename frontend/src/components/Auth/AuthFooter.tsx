@@ -1,11 +1,12 @@
 import illo from "../../assets/auth-illustration.svg";
 
 const AuthFooter = () => {
-    return(
+    return (
         <div
             className="
                 relative
-                h-[300px]
+                h-[190px]
+                xl:h-[230px]
                 rounded-3xl
                 bg-gradient-to-br
                 from-indigo-600
@@ -29,6 +30,6 @@ const AuthFooter = () => {
             />
         </div>
     );
-}
+};
 
 export default AuthFooter;

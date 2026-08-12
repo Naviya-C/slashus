@@ -1,7 +1,7 @@
 import { FaFacebookF } from "react-icons/fa";
 
 const AuthFB = () => {
-    return(
+    return (
         <button
             disabled
             className="
@@ -19,12 +19,9 @@ const AuthFB = () => {
                 disabled:hover:bg-transparent
             "
         >
-            <FaFacebookF
-                size={24}
-                className="text-blue-600"
-            />
+            <FaFacebookF size={24} className="text-blue-600" />
         </button>
     );
-}
+};
 
 export default AuthFB;
