@@ -1,11 +1,3 @@
-"""HTTP API.
-
-Async throughout. Identity comes from the gateway and is VERIFIED with a shared
-secret: the gateway proves who the caller is, the secret proves the call came
-from the gateway. A bare trusted header is spoofable by anything with network
-access to the pod.
-"""
-
 from __future__ import annotations
 
 import hmac
@@ -43,9 +35,6 @@ class MarkRequest(BaseModel):
 
 
 class SlidingWindowLimiter:
-    """Per-user, per-replica backstop against a single runaway client.
-    A global limit belongs at the gateway, which can see every replica."""
-
     def __init__(self, limit: int, window_seconds: float = 60.0) -> None:
         self._limit = limit
         self._window = window_seconds
@@ -112,8 +101,6 @@ def create_app(*, settings: Settings, container: Any, health: HealthRegistry) ->
         x_gateway_secret: Annotated[str | None, Header(alias="X-Gateway-Secret")] = None,
     ) -> UUID:
         expected = settings.security.gateway_shared_secret
-        # Constant-time: a plain == leaks the secret a byte at a time to anyone
-        # who can measure response latency.
         if expected is not None and not hmac.compare_digest(
             x_gateway_secret or "", expected.get_secret_value()
         ):
@@ -121,18 +108,17 @@ def create_app(*, settings: Settings, container: Any, health: HealthRegistry) ->
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid credentials")
         return x_user_id
 
-    async def rate_limited(user_id: Annotated[UUID, Depends(current_user)]) -> UUID:
+    async def rate_limited(user_id: UUID = Depends(current_user)) -> UUID:
         if not limiter.allow(str(user_id)):
             raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "too many requests")
         return user_id
 
-    UserId = Annotated[UUID, Depends(current_user)]  # noqa: N806
-    LimitedUserId = Annotated[UUID, Depends(rate_limited)]  # noqa: N806
-
-    # -- chat -------------------------------------------------------------
 
     @app.post("/api/v1/chat", tags=["chat"])
-    async def chat(body: ChatRequest, user_id: LimitedUserId) -> Any:
+    async def chat(
+        body: ChatRequest,
+        user_id: UUID = Depends(rate_limited),
+    ) -> Any:
         session = await container.repository.get_or_create_session(
             user_id=user_id,
             session_id=body.session_id,
@@ -146,8 +132,6 @@ def create_app(*, settings: Settings, container: Any, health: HealthRegistry) ->
             import json as _json
 
             async def events():
-                # SSE, so the client can show tool progress. An agent loop can
-                # spend twenty seconds in tools before the first prose token.
                 async for event in container.runner.stream(
                     message=body.message,
                     user_id=user_id,
@@ -196,8 +180,6 @@ def create_app(*, settings: Settings, container: Any, health: HealthRegistry) ->
         return {
             "session_id": session_id,
             "reply": result.reply,
-            # The tool sequence the MODEL chose. In a hardcoded pipeline this
-            # would be a constant; exposing it makes agent behaviour debuggable.
             "tools_used": result.tool_calls,
             "iterations": result.iterations,
             "timed_out": result.timed_out,
@@ -205,14 +187,20 @@ def create_app(*, settings: Settings, container: Any, health: HealthRegistry) ->
         }
 
     @app.get("/api/v1/practice/{set_id}", tags=["practice"])
-    async def practice_set(set_id: UUID, user_id: UserId) -> dict[str, Any]:
+    async def practice_set(
+        set_id: UUID,
+        user_id: UUID = Depends(current_user),
+    ) -> dict[str, Any]:
         result = await container.repository.get_practice_set(set_id=set_id, user_id=user_id)
         if result is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "practice set not found")
         return result
 
     @app.post("/api/v1/mark", tags=["practice"])
-    async def mark(body: MarkRequest, user_id: LimitedUserId) -> dict[str, Any]:
+    async def mark(
+        body: MarkRequest,
+        user_id: UUID = Depends(rate_limited),
+    ) -> dict[str, Any]:
         try:
             return await container.evaluator.evaluate_and_save(
                 repository=container.repository,
@@ -224,13 +212,12 @@ def create_app(*, settings: Settings, container: Any, health: HealthRegistry) ->
         except ValueError as exc:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
-    # -- memory -----------------------------------------------------------
 
     @app.get("/api/v1/memory", tags=["memory"])
-    async def memory(user_id: UserId, query: str = "") -> dict[str, Any]:
-        """Inspect what the agent remembers. Memory that cannot be inspected
-        cannot be debugged, and a wrong procedural rule silently degrades
-        every future turn."""
+    async def memory(
+        query: str = "",
+        user_id: UUID = Depends(current_user),
+    ) -> dict[str, Any]:
         context = await container.memory.recall(str(user_id), query or "study")
         return {
             "semantic": [{"text": m.text, "payload": m.payload} for m in context.semantic],
@@ -242,9 +229,10 @@ def create_app(*, settings: Settings, container: Any, health: HealthRegistry) ->
         }
 
     @app.delete("/api/v1/memory/{kind}", tags=["memory"])
-    async def forget(kind: str, user_id: UserId) -> dict[str, Any]:
-        """Erase one memory type. Required for a data-deletion request, and the
-        practical fix when a bad procedural rule has been learned."""
+    async def forget(
+        kind: str,
+        user_id: UUID = Depends(current_user),
+    ) -> dict[str, Any]:
         if kind not in {"semantic", "episodic", "procedural"}:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"unknown memory type {kind!r}")
 
@@ -252,13 +240,12 @@ def create_app(*, settings: Settings, container: Any, health: HealthRegistry) ->
         log.info("api.memory_erased", kind=kind, count=count)
         return {"erased": count, "kind": kind}
 
-    # -- sessions ---------------------------------------------------------
 
     @app.get("/api/v1/sessions", tags=["sessions"])
     async def sessions(
-        user_id: UserId,
         limit: Annotated[int, Query(ge=1, le=50)] = 20,
         cursor: str | None = None,
+        user_id: UUID = Depends(current_user),
     ) -> dict[str, Any]:
         return await container.repository.list_sessions(
             user_id=user_id, limit=limit, cursor=_cursor(cursor)
@@ -267,15 +254,14 @@ def create_app(*, settings: Settings, container: Any, health: HealthRegistry) ->
     @app.get("/api/v1/sessions/{session_id}", tags=["sessions"])
     async def session_messages(
         session_id: UUID,
-        user_id: UserId,
         limit: Annotated[int, Query(ge=1, le=100)] = 30,
         cursor: str | None = None,
+        user_id: UUID = Depends(current_user),
     ) -> dict[str, Any]:
         return await container.repository.list_messages(
             user_id=user_id, session_id=session_id, limit=limit, cursor=_cursor(cursor)
         )
 
-    # -- health -----------------------------------------------------------
 
     @app.get("/health/live", tags=["health"])
     async def liveness() -> JSONResponse:
