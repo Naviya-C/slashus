@@ -23,6 +23,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import grpc
+import inspect
 import structlog
 from grpc.aio import ServerInterceptor
 from grpc_health.v1 import health, health_pb2, health_pb2_grpc
@@ -60,7 +61,10 @@ class ObservabilityInterceptor(ServerInterceptor):
             started = time.perf_counter()
             code = "OK"
             try:
-                return await inner(request, context)
+                result = inner(request, context)
+                if inspect.isawaitable(result):
+                    return await result
+                return result 
             except grpc.aio.AbortError:
                 code = str(context.code().name if context.code() else "ABORTED")
                 raise
