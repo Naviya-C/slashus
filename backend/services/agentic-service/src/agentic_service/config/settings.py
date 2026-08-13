@@ -9,12 +9,27 @@ from typing import Literal
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
+# The service root: <root>/src/<package>/config/settings.py -> parents[3].
+# Resolved from the MODULE path, not the working directory, because
+# ``env_file=".env"`` is CWD-relative -- running the CLI from src/ silently
+# found no .env and every required field reported "Field required". The CWD
+# entry is kept first so a local override still wins when you do run from the
+# root.
 _SERVICE_ROOT = Path(__file__).resolve().parents[3]
 ENV_FILES = (".env", _SERVICE_ROOT / ".env")
 
 
 class _BaseConfig(BaseSettings):
+    """Shared base so every settings group reads the same .env file.
+
+    Load-bearing, not cosmetic. Nested settings groups are created via
+    ``default_factory``, and pydantic-settings builds each group's sources from
+    ITS OWN ``model_config`` -- it does not inherit the parent's. Putting
+    ``env_file`` only on the top-level ``Settings`` therefore meant every nested
+    group read real OS environment variables but silently ignored ``.env``, so
+    ``DATABASE_URL=...`` in the file produced "Field required".
+    """
+
     model_config = SettingsConfigDict(env_file=ENV_FILES, env_file_encoding="utf-8", extra="ignore")
 
 
@@ -32,6 +47,8 @@ class LLMSettings(_BaseConfig):
     temperature: float = Field(0.2, ge=0.0, le=2.0)
     max_output_tokens: int = Field(2048, ge=64, le=32_000)
     request_timeout_seconds: float = Field(90.0, gt=0, le=600)
+    # ONE retry layer. Nested retries multiply; a 3x3x2 arrangement is 18
+    # upstream calls for a single decision.
     max_retries: int = Field(2, ge=0, le=5)
 
 
@@ -43,10 +60,12 @@ class AgentSettings(_BaseConfig):
         extra="ignore",
     )
 
-
+    # The ReAct loop's hard ceiling. A real agent chooses its own path, so this
+    # is what stops a model that keeps calling tools from running unbounded.
     recursion_limit: int = Field(25, ge=4, le=100)
     max_tool_calls: int = Field(10, ge=1, le=50)
     turn_timeout_seconds: float = Field(180.0, gt=0, le=900)
+    # Working-memory ceiling, applied before every model call.
     max_window_tokens: int = Field(6000, ge=500, le=200_000)
     keep_recent_messages: int = Field(12, ge=2, le=200)
     summarization_enabled: bool = True
@@ -61,6 +80,8 @@ class MemorySettings(_BaseConfig):
         extra="ignore",
     )
 
+    # Long-term store embeddings. Served by embedding-service so the agent
+    # never loads a model of its own.
     embed_dimensions: int = Field(1024, ge=8)
     consolidation_enabled: bool = True
 
@@ -76,6 +97,10 @@ class CacheSettings(_BaseConfig):
     )
 
     enabled: bool = True
+    # High on purpose. Embeddings place "explain photosynthesis" and "explain
+    # respiration" fairly close; they are opposite processes. A false hit is a
+    # confidently wrong answer served instantly -- the worst failure for a
+    # study tool. A miss only costs what the system cost anyway.
     similarity_threshold: float = Field(0.95, ge=0.5, le=1.0)
     ttl_seconds: int = Field(86_400, ge=60)
     max_entries_per_scope: int = Field(200, ge=10, le=5000)
@@ -182,6 +207,9 @@ class Settings(BaseSettings):
             if not self.llm.api_key:
                 raise ValueError("LLM_API_KEY is required in production")
             if not self.redis.url:
+                # Without Redis both the checkpointer (working memory) and the
+                # long-term store are per-process: a second replica sees a
+                # student with no history and no memories.
                 raise ValueError("REDIS_URL is required in production")
             if not self.security.gateway_shared_secret:
                 raise ValueError("SECURITY_GATEWAY_SHARED_SECRET is required in production")
