@@ -1,6 +1,6 @@
 [project]
 name = "embedding-service"
-version = "4.0.1"
+version = "4.0.2"
 description = "Sinhala hybrid-retrieval embedding and vector-search service"
 requires-python = ">=3.12"
 
@@ -14,10 +14,10 @@ dependencies = [
     # ONNX Runtime rather than sentence-transformers/torch: far smaller image,
     # lower resident memory, faster CPU inference, explicit thread control.
     "fastembed>=0.8.0,<0.9.0",
-    "grpcio>=1.68,<2.0",
-    "grpcio-health-checking>=1.68,<2.0",
-    "grpcio-reflection>=1.68,<2.0",
-    "protobuf>=5.28,<6.0",
+    "grpcio>=1.83.0,<1.84.0",
+    "grpcio-health-checking>=1.83.0,<1.84.0",
+    "grpcio-reflection>=1.83.0,<1.84.0",
+    "protobuf>=7.35.1,<7.36.0",
     "structlog>=24.4,<26.0",
     "prometheus-client>=0.21,<1.0",
     "opentelemetry-api>=1.28,<2.0",
@@ -31,7 +31,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.3,<9.0","pytest-asyncio>=0.24,<1.0","pytest-cov>=6.0,<7.0",
-       "grpcio-tools>=1.68,<2.0","ruff>=0.8,<1.0","mypy>=1.13,<2.0"]
+       "grpcio-tools>=1.83.0,<1.84.0","ruff>=0.8,<1.0","mypy>=1.13,<2.0"]
 
 [project.scripts]
 embedding-service = "embedding_service.__main__:cli"
