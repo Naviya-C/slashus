@@ -1,8 +1,3 @@
-// Package config loads gateway settings from the environment.
-//
-// Backends are URLs rather than compile-time constants, so services can be
-// deployed one at a time: a backend that is not up yet returns 502 on its own
-// routes while everything else keeps working.
 package config
 
 import (
@@ -18,28 +13,16 @@ import (
 type Config struct {
 	Port string
 
-	// JWTSecret  -> HS256, shared secret. Matches the auth service as built.
-	// JWKSURL    -> RS256, public keys fetched from auth. Preferred long term:
-	//               the gateway can then verify but never MINT tokens.
 	JWTSecret string
 	JWKSURL   string
-
-	// Optional claim checks. Enforced only when set — the auth service does
-	// not emit iss/aud yet. Set these once it does; a token minted by the same
-	// issuer for a different application would otherwise be accepted here.
 	Issuer   string
 	Audience string
-
-	// Backend service URLs (internal docker network names in production).
 	AuthURL      string
 	UploadURL    string
 	IngestionURL string
 	AgenticURL   string
-
-	// Path prefix the auth service actually serves on.
+	AgenticServiceSecret string
 	AuthPrefix string
-
-	// Rate limiting.
 	RedisURL     string
 	RateLimit    int
 	RateWindow   time.Duration
@@ -65,6 +48,7 @@ func Load() (*Config, error) {
 		UploadURL:    getenv("UPLOAD_URL", "http://upload:8082"),
 		IngestionURL: getenv("INGESTION_URL", "http://ingestion:8083"),
 		AgenticURL:   getenv("AGENTIC_URL", "http://agentic-service:8084"),
+		AgenticServiceSecret: os.Getenv("AGENTIC_SERVICE_SECRET"),
 
 		AuthPrefix: getenv("AUTH_PREFIX", "/api/v1/auth"),
 
@@ -79,10 +63,6 @@ func Load() (*Config, error) {
 		ProxyTimeout: getenvDuration("PROXY_TIMEOUT", 5*time.Minute),
 	}
 
-	// Fail closed on ambiguous or absent verification config. A gateway that
-	// starts without knowing how to verify tokens is worse than one that
-	// refuses to start: it would have to either reject everything or, worse,
-	// let requests through unchecked.
 	switch {
 	case cfg.JWTSecret == "" && cfg.JWKSURL == "":
 		return nil, fmt.Errorf("set JWT_SECRET (HS256) or JWKS_URL (RS256)")
