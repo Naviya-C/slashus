@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING
 import structlog
 
 from embedding_service.config.settings import EmbeddingSettings
+from embedding_service.encoders.bge_m3 import register_model
 
 if TYPE_CHECKING:
     from fastembed import TextEmbedding
@@ -81,20 +82,16 @@ class DenseEncoder:
         def _load() -> TextEmbedding:
             from fastembed import TextEmbedding
 
+            register_model(self._cfg.model_name)
             return TextEmbedding(
                 model_name=self._cfg.model_name,
                 threads=self._cfg.onnx_threads,
-                # int8 roughly halves memory and speeds up CPU inference, at a
-                # small and generally acceptable recall cost. Off by default so
-                # enabling it is a deliberate, measurable decision.
-                quantized=self._cfg.quantized,
             )
 
         loop = asyncio.get_running_loop()
         log.info(
             "dense.loading",
             model=self._cfg.model_name,
-            quantized=self._cfg.quantized,
             threads=self._cfg.onnx_threads,
         )
         self._model = await loop.run_in_executor(self._executor, _load)

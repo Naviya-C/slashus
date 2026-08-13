@@ -97,8 +97,6 @@ class EmbeddingSettings(_BaseConfig):
     # claim every core on a shared VM.
     onnx_threads: int = Field(2, ge=1, le=64)
     inference_workers: int = Field(2, ge=1, le=16)
-    # int8: ~half the memory, faster CPU inference, small recall cost.
-    quantized: bool = False
     # BGE-M3 takes no instruction prefix; kept configurable for other models.
     query_prefix: str = ""
     document_prefix: str = ""
