@@ -139,7 +139,7 @@ class Supervisor:
 
         async def run_grpc() -> None:
             await grpc_server.start()
-            await set_serving(health_servicer, True)
+            set_serving(health_servicer, True)
             c.health.set("grpc-server", ComponentState.HEALTHY, f":{cfg.server.grpc_port}")
             log.info("grpc.serving", port=cfg.server.grpc_port)
             await self._shutdown.wait()
@@ -172,7 +172,7 @@ class Supervisor:
                 log.error("supervisor.task_failed", error=str(failure), exc_info=failure)
             raise
         finally:
-            await set_serving(health_servicer, False)
+            set_serving(health_servicer, False)
             await grpc_server.stop(grace=cfg.server.shutdown_grace_seconds)
             await c.aclose()
             log.info("shutdown.complete")
