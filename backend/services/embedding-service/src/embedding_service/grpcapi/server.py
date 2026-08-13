@@ -124,8 +124,8 @@ async def build_server(
     health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
     # NOT_SERVING until the supervisor marks the service ready, so a client
     # connecting during model load is told to wait instead of timing out.
-    await health_servicer.set(SERVICE_NAME, health_pb2.HealthCheckResponse.NOT_SERVING)
-    await health_servicer.set("", health_pb2.HealthCheckResponse.NOT_SERVING)
+    health_servicer.set(SERVICE_NAME, health_pb2.HealthCheckResponse.NOT_SERVING)
+    health_servicer.set("", health_pb2.HealthCheckResponse.NOT_SERVING)
 
     reflection.enable_server_reflection(
         (
@@ -147,11 +147,11 @@ async def build_server(
     return server, health_servicer
 
 
-async def set_serving(health_servicer: health.HealthServicer, serving: bool) -> None:
+def set_serving(health_servicer: health.HealthServicer, serving: bool) -> None:
     status = (
         health_pb2.HealthCheckResponse.SERVING
         if serving
         else health_pb2.HealthCheckResponse.NOT_SERVING
     )
-    await health_servicer.set(SERVICE_NAME, status)
-    await health_servicer.set("", status)
+    health_servicer.set(SERVICE_NAME, status)
+    health_servicer.set("", status)

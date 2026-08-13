@@ -194,7 +194,7 @@ class Settings(BaseSettings):
 
     environment: Literal["local", "staging", "production"] = "local"
     service_name: str = "embedding-service"
-    service_version: str = "4.0.0"
+    service_version: str = "4.0.3"
 
     qdrant: QdrantSettings = Field(default_factory=QdrantSettings)  # type: ignore[arg-type]
     kafka: KafkaSettings = Field(default_factory=KafkaSettings)
