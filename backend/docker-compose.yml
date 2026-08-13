@@ -193,7 +193,7 @@ services:
       KAFKA_GROUP_ID: embedding-service
       KAFKA_CHUNKS_TOPIC: documents.chunks
       KAFKA_DLQ_TOPIC: documents.chunks.dlq
-      REDIS_URL: redis://redis:6379/3
+      REDIS_URL: redis://redis:6379/0
       HTTP_PORT: "8004"
       GRPC_PORT: "50051"
       EMBEDDING_MODEL_NAME: BAAI/bge-m3
@@ -235,7 +235,7 @@ services:
     env_file:
       - ./services/agentic-service/.env
     environment:
-      REDIS_URL: redis://redis:6379/3
+      REDIS_URL: redis://redis:6379/0
       EMBEDDING_GRPC_URL: embedding-service:50051
       AGENT_MAX_TOOL_CALLS: "10"
       AGENT_RECURSION_LIMIT: "25"
