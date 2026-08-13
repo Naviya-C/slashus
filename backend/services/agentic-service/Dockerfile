@@ -17,8 +17,7 @@ COPY --from=deps /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.
 COPY --from=deps /usr/local/bin /usr/local/bin
 WORKDIR /app
 COPY --chown=appuser:appuser src ./src
-COPY --chown=appuser:appuser migrations ./migrations
-COPY --chown=appuser:appuser alembic.ini ./alembic.ini
+
 USER appuser
 EXPOSE 8084
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
