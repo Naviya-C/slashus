@@ -48,7 +48,7 @@ def check() -> None:
     typer.echo(f"collection  : {settings.qdrant.collection}")
     typer.echo(
         f"dense       : {settings.embedding.model_name} via ONNX "
-        f"(quantized={settings.embedding.quantized}, threads={settings.embedding.onnx_threads})"
+        f"(threads={settings.embedding.onnx_threads})"
     )
     typer.echo(
         f"sparse      : Sinhala-aware hashed, {settings.sparse.num_buckets} buckets, stateless"

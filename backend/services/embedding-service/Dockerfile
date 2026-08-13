@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1.9
-
+# ONNX Runtime instead of torch: no CUDA wheels, no 800 MB dependency chain,
+# and the model is baked in so startup needs no network.
 FROM python:3.12-slim AS deps
 
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1
@@ -15,8 +16,10 @@ RUN uv pip install --system --no-cache .
 FROM deps AS model
 ARG EMBEDDING_MODEL_NAME=BAAI/bge-m3
 ENV FASTEMBED_CACHE_PATH=/opt/models
-
-RUN python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='${EMBEDDING_MODEL_NAME}')"
+# Baked at build time: startup needs no egress, and every replica of a tag runs
+# byte-identical weights.
+RUN EMBEDDING_MODEL_NAME="${EMBEDDING_MODEL_NAME}" \
+    python -m embedding_service.download_model
 
 FROM python:3.12-slim AS runtime
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
