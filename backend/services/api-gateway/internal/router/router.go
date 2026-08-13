@@ -72,6 +72,11 @@ func New(d Deps) (http.Handler, error) {
 
 	mux.Handle("GET /jobs/{id}", api(ingestionProxy))
 
+	agenticHandler := middleware.AgenticServiceAuth(
+		d.Cfg.AgenticServiceSecret,
+		agenticProxy,
+	)
+
 	for _, route := range []string{
 		"POST /api/v1/chat",
 		"POST /api/v1/mark",
@@ -79,7 +84,7 @@ func New(d Deps) (http.Handler, error) {
 		"GET /api/v1/sessions/{id}",
 		"GET /api/v1/practice/{id}",
 	} {
-		mux.Handle(route, api(agenticProxy))
+		mux.Handle(route, api(agenticHandler))
 	}
 
 	// ---- global chain, outermost first --------------------------------
