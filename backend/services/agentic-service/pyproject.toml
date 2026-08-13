@@ -29,6 +29,7 @@ dependencies = [
     "opentelemetry-sdk>=1.28,<2.0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.28,<2.0",
     "typer>=0.15,<1.0",
+    "grpcio-health-checking>=1.83.0,<1.84.0",
 ]
 
 [project.optional-dependencies]
