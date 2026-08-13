@@ -1,6 +1,6 @@
 [project]
 name = "embedding-service"
-version = "4.0.0"
+version = "4.0.1"
 description = "Sinhala hybrid-retrieval embedding and vector-search service"
 requires-python = ">=3.12"
 
