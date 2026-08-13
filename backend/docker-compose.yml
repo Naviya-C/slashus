@@ -1,23 +1,29 @@
 services:
   caddy:
     image: caddy:2-alpine
-    container_name: caddy
     ports:
-      - "80:80"     # ACME challenge + HTTPS redirect
+      - "80:80"
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./data/caddy:/data
       - ./data/caddy-config:/config
     depends_on:
-      - api-gateway
+      api-gateway:
+        condition: service_started
     mem_limit: 256m
     restart: unless-stopped
 
   redis:
     image: redis:8-alpine
-    container_name: redis
-    command: ["redis-server", "--maxmemory", "384mb", "--maxmemory-policy", "allkeys-lru"]
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - 768mb
+      - --maxmemory-policy
+      - noeviction
     volumes:
       - ./data/redis:/data
     healthcheck:
@@ -25,12 +31,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-    mem_limit: 512m
+    mem_limit: 1g
     restart: unless-stopped
 
   kafka:
     image: apache/kafka:4.1.0
-    container_name: kafka
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
@@ -61,7 +66,6 @@ services:
 
   kafka-setup:
     image: apache/kafka:4.1.0
-    container_name: kafka-setup
     depends_on:
       kafka:
         condition: service_healthy
@@ -69,15 +73,15 @@ services:
       - /bin/sh
       - -ec
       - |
-          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic documents.uploaded --partitions 1 --replication-factor 1 &&
-          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic documents.chunks --partitions 1 --replication-factor 1 &&
-          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic documents.uploaded --partitions 1 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic documents.chunks --partitions 1 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic documents.chunks.dlq --partitions 1 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list
     restart: "no"
 
   auth-service:
     build:
       context: ./services/auth-service
-    container_name: auth-service
     env_file:
       - ./services/auth-service/.env
     environment:
@@ -95,7 +99,6 @@ services:
   api-gateway:
     build:
       context: ./services/api-gateway
-    container_name: api-gateway
     env_file:
       - ./services/api-gateway/.env
     environment:
@@ -118,17 +121,16 @@ services:
     build:
       context: .
       dockerfile: services/upload-service/Dockerfile
-    container_name: upload-service
-    depends_on:
-      kafka:
-        condition: service_healthy
-      kafka-setup:
-        condition: service_completed_successfully
     env_file:
       - ./services/upload-service/.env
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       MESSAGE_PROVIDER: kafka
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-setup:
+        condition: service_completed_successfully
     expose:
       - "8002"
     volumes:
@@ -140,12 +142,6 @@ services:
     build:
       context: .
       dockerfile: services/ingestion-service/Dockerfile
-    container_name: ingestion-service
-    depends_on:
-      kafka:
-        condition: service_healthy
-      kafka-setup:
-        condition: service_completed_successfully
     env_file:
       - ./services/ingestion-service/.env
     environment:
@@ -153,12 +149,21 @@ services:
       UPLOAD_TOPIC: documents.uploaded
       CHUNKS_TOPIC: documents.chunks
       INGESTION_GROUP: ingestion
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-setup:
+        condition: service_completed_successfully
     volumes:
       - ./data/uploads:/data/uploads
     expose:
       - "8003"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health', timeout=3)"]
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8003/health', timeout=3)"
       interval: 15s
       timeout: 5s
       retries: 5
@@ -168,62 +173,76 @@ services:
 
   embedding-service:
     build:
-      context: .
-      dockerfile: services/embedding-service/Dockerfile
-    container_name: embedding-service
-    depends_on:
-      kafka:
-        condition: service_healthy
-      kafka-setup:
-        condition: service_completed_successfully
+      context: ./services/embedding-service
+      dockerfile: Dockerfile
+      args:
+        EMBEDDING_MODEL_NAME: BAAI/bge-m3
     env_file:
       - ./services/embedding-service/.env
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      CHUNKS_TOPIC: documents.chunks
-      EMBEDDING_GROUP: embedding
-      GRPC_PORT: "50051"
+      KAFKA_GROUP_ID: embedding-service
+      KAFKA_CHUNKS_TOPIC: documents.chunks
+      KAFKA_DLQ_TOPIC: documents.chunks.dlq
+      REDIS_URL: redis://redis:6379/3
       HTTP_PORT: "8004"
-    volumes:
-      - ./data/sparse_vocab:/app/_store
-      - ./data/huggingface:/home/appuser/.cache/huggingface
+      GRPC_PORT: "50051"
+      EMBEDDING_ONNX_THREADS: "2"
+      EMBEDDING_INFERENCE_WORKERS: "2"
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-setup:
+        condition: service_completed_successfully
     expose:
-      - "8004"    # health
-      - "50051"   # gRPC search + ListTitles
+      - "8004"
+      - "50051"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health', timeout=3)"]
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8004/health/ready', timeout=3)"
       interval: 15s
       timeout: 5s
-      retries: 5
-      # BGE-M3 is ~2 GB and loads before anything answers.
+      retries: 8
       start_period: 120s
-    mem_limit: 3g
-    cpus: "1.0"
+    mem_limit: 4g
+    cpus: "2.0"
+    stop_grace_period: 30s
     restart: unless-stopped
 
   agentic-service:
     build:
       context: ./services/agentic-service
-    container_name: agentic-service
-    depends_on:
-      redis:
-        condition: service_healthy
-      embedding-service:
-        condition: service_healthy
+      dockerfile: Dockerfile
     env_file:
       - ./services/agentic-service/.env
     environment:
       REDIS_URL: redis://redis:6379/3
       EMBEDDING_GRPC_URL: embedding-service:50051
-      MAX_TOOL_CALLS: "8"
-      DEV_MODE: "false"
+      AGENT_MAX_TOOL_CALLS: "10"
+      AGENT_RECURSION_LIMIT: "25"
+      AGENT_TURN_TIMEOUT_SECONDS: "180"
+    depends_on:
+      redis:
+        condition: service_healthy
+      embedding-service:
+        condition: service_healthy
     expose:
       - "8084"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8084/health', timeout=3)"]
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8084/health/ready', timeout=3)"
       interval: 15s
       timeout: 5s
-      retries: 5
-      start_period: 20s
-    mem_limit: 768m
+      retries: 8
+      start_period: 30s
+    mem_limit: 1g
+    stop_grace_period: 30s
     restart: unless-stopped

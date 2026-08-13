@@ -1,1 +1,3 @@
+migrations/
+tests/
 .env

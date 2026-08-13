@@ -1,14 +1,3 @@
-.env
-.env.*
-!.env.example
-__pycache__/
-*.py[cod]
-.venv/
-venv*/
-.pytest_cache/
-_store/
-*.zip
-tests/
-frontend/
 migrations/
-scripts/
+tests/
+.env
