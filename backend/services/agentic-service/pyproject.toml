@@ -1,0 +1,84 @@
+[project]
+name = "agentic-service"
+version = "4.0.0"
+description = "Real ReAct tutoring agent with four-tier memory for Slashus"
+requires-python = ">=3.12"
+
+dependencies = [
+    "fastapi>=0.115,<1.0",
+    "uvicorn[standard]>=0.32,<1.0",
+    "pydantic>=2.9,<3.0",
+    "pydantic-settings>=2.6,<3.0",
+    # Agent framework supplies the tool-calling loop and working-memory checkpointer.
+    "langgraph>=1.0,<2.0",
+    "langgraph-checkpoint>=2.0",
+    "langgraph-checkpoint-redis>=0.5",
+    "langchain>=1.0,<2.0",
+    "langchain-core>=1.0,<2.0",
+    "langchain-openai>=1.0,<2.0",
+    "grpcio>=1.68,<2.0",
+    "protobuf>=5.28,<6.0",
+    "sqlalchemy[asyncio]>=2.0.36,<3.0",
+    "asyncpg>=0.30,<1.0",
+    "alembic>=1.14,<2.0",
+    "pgvector>=0.3,<1.0",
+    "redis>=5.2,<7.0",
+    "structlog>=24.4,<26.0",
+    "prometheus-client>=0.21,<1.0",
+    "opentelemetry-api>=1.28,<2.0",
+    "opentelemetry-sdk>=1.28,<2.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.28,<2.0",
+    "typer>=0.15,<1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3,<9.0",
+    "pytest-asyncio>=0.24,<1.0",
+    "pytest-cov>=6.0,<7.0",
+    "grpcio-tools>=1.68,<2.0",
+    "ruff>=0.8,<1.0",
+    "mypy>=1.13,<2.0",
+]
+
+[project.scripts]
+agentic-service = "agentic_service.__main__:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agentic_service"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E","W","F","I","N","UP","B","C4","SIM","RUF","ASYNC","S","T20"]
+ignore = ["S104"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+"src/agentic_service/proto_gen/*" = ["ALL"]
+"migrations/**" = ["ALL"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+exclude = ["proto_gen", "migrations"]
+
+[[tool.mypy.overrides]]
+module = ["langgraph.*", "langchain_core.*", "langchain_openai.*", "grpc.*", "redis.*", "langmem.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-q --strict-markers"
+
+[tool.coverage.run]
+source = ["src/agentic_service"]
+omit = ["*/proto_gen/*"]

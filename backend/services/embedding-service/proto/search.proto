@@ -1,106 +1,112 @@
-// search.proto — the contract between agentic-service and embedding-service.
+// The contract between agentic-service and embedding-service.
+//
+// v2 changes:
+//   * vocab_hash removed from HealthResponse -- the sparse encoder is stateless
+//     and hashed, so there is no vocab to version.
+//   * Standard grpc.health.v1.Health is served alongside this service, so
+//     orchestrators and load balancers can probe without knowing this schema.
+//   * SearchResponse.degraded signals a partial result (one leg failed) rather
+//     than silently returning half a hybrid search as though it were whole.
 
 syntax = "proto3";
 
-package slashus.search.v1;
+package slashus.search.v2;
+
+option go_package = "github.com/slashus/contracts/search/v2;searchv2";
 
 enum SearchMode {
-	SEARCH_MODE_HYBRID = 0;
-	SEARCH_MODE_DENSE = 1;
-	SEARCH_MODE_SPARSE = 2;
+  SEARCH_MODE_UNSPECIFIED = 0;
+  SEARCH_MODE_HYBRID = 1;
+  SEARCH_MODE_DENSE = 2;
+  SEARCH_MODE_SPARSE = 3;
 }
 
 enum EmbedPurpose {
-	EMBED_PURPOSE_QUERY = 0;
-	EMBED_PURPOSE_DOCUMENT = 1;
+  EMBED_PURPOSE_UNSPECIFIED = 0;
+  EMBED_PURPOSE_QUERY = 1;
+  EMBED_PURPOSE_DOCUMENT = 2;
 }
 
 message FilterValues {
-  	repeated string values = 1;
+  repeated string values = 1;
 }
 
 message SearchRequest {
-	string query = 1;
-	string user_id = 2;
-	repeated string doc_ids = 3;
-
-	int32 limit = 4;
-	SearchMode mode = 5;
-	string language = 6;
-
-	map<string, FilterValues> filters = 7;
+  string query = 1;
+  string user_id = 2;
+  repeated string doc_ids = 3;
+  int32 limit = 4;
+  SearchMode mode = 5;
+  string language = 6;
+  map<string, FilterValues> filters = 7;
 }
 
 message Hit {
-	string chunk_id = 1;
-	float score = 2;
-	string content = 3;
-	string title = 4;
-	int32 page = 5;
-	string doc_id = 6;
-	string source = 7;
-	map<string, string> extra = 8;
-	int32 dense_rank = 9;
-	int32 sparse_rank = 10;
+  string chunk_id = 1;
+  float score = 2;
+  string content = 3;
+  string title = 4;
+  int32 page = 5;
+  string doc_id = 6;
+  string source = 7;
+  map<string, string> extra = 8;
+  int32 dense_rank = 9;
+  int32 sparse_rank = 10;
 }
 
 message SearchResponse {
-	repeated Hit hits = 1;
-	string collection_used = 2;
-	string language_used = 3;
-	bool user_has_no_documents = 4;
-	int32 total_user_chunks = 5;
-	repeated string filters_applied = 6;
+  repeated Hit hits = 1;
+  string collection_used = 2;
+  string language_used = 3;
+  bool user_has_no_documents = 4;
+  int32 total_user_chunks = 5;
+  repeated string filters_applied = 6;
+  // True when one retrieval leg failed and the result came from the other.
+  // The caller can then choose to retry rather than treating a half-result as
+  // authoritative.
+  bool degraded = 7;
 }
 
 message ListTitlesRequest {
-	string user_id = 1;
-	repeated string doc_ids = 2;
-	int32 limit = 3;
+  string user_id = 1;
+  repeated string doc_ids = 2;
+  int32 limit = 3;
 }
 
 message TitleInfo {
-	string title = 1;
-	int32 chunk_count = 2;
+  string title = 1;
+  int32 chunk_count = 2;
 }
 
 message ListTitlesResponse {
-	repeated TitleInfo titles = 1;
-	int32 total_chunks = 2;
-	bool truncated = 3;
+  repeated TitleInfo titles = 1;
+  int32 total_chunks = 2;
+  bool truncated = 3;
 }
 
-
 message EmbedRequest {
-	repeated string texts = 1;
-	EmbedPurpose purpose = 2;
+  repeated string texts = 1;
+  EmbedPurpose purpose = 2;
 }
 
 message DenseVector {
-  	repeated float values = 1;
+  repeated float values = 1;
 }
 
 message SparseVector {
-	repeated uint32 indices = 1;
-	repeated float values = 2;
+  repeated uint32 indices = 1;
+  repeated float values = 2;
 }
 
 message EmbedResponse {
-	repeated DenseVector dense = 1;
-	repeated SparseVector sparse = 2;
-}
-
-message HealthRequest {}
-
-message HealthResponse {
-	bool ready = 1;
-	string detail = 2;
-	string vocab_hash = 3;
+  repeated DenseVector dense = 1;
+  repeated SparseVector sparse = 2;
+  string model = 3;
+  int32 dimensions = 4;
 }
 
 service VectorSearch {
-	rpc Search(SearchRequest) returns (SearchResponse);
-	rpc ListTitles(ListTitlesRequest) returns (ListTitlesResponse);
-	rpc Embed(EmbedRequest) returns (EmbedResponse);
-	rpc Health(HealthRequest) returns (HealthResponse);
+  rpc Search(SearchRequest) returns (SearchResponse);
+  rpc ListTitles(ListTitlesRequest) returns (ListTitlesResponse);
+  rpc Embed(EmbedRequest) returns (EmbedResponse);
 }

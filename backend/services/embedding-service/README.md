@@ -1,104 +1,75 @@
-# Embedding Service
+# embedding-service v4
 
-Owns Qdrant, BGE-M3 and the sparse vocab. Ingests chunks from Kafka and serves
-search over gRPC. Nothing else in the system talks to Qdrant.
+This service owns document ingestion, BGE-M3 dense embeddings, Sinhala-aware
+stateless sparse encoding, Qdrant storage, and gRPC retrieval.
 
-## Surface
+Sparse indices are deterministic hashes of Sinhala/English/numeric tokens. No
+local vocabulary, corpus-level BM25 index, or local IDF database exists. Qdrant
+applies `Modifier.IDF`; Qdrant also performs dense+sparse RRF inside each search
+branch.
 
-| Transport | Endpoint | Purpose |
-|---|---|---|
-| HTTP `:8004` | `GET /health` | liveness, for Docker |
-| gRPC `:50051` | `Search` | hybrid search, ownership enforced here |
-| gRPC `:50051` | `ListTitles` | the exact stored lesson titles for a user |
-| gRPC `:50051` | `Embed` | dense + sparse vectors for arbitrary text |
-| gRPC `:50051` | `Health` | readiness + sparse vocab hash |
+When the agent supplies high-confidence indexed lesson choices, retrieval runs:
 
-The HTTP surface is one liveness route and deliberately does not touch Qdrant
-or Kafka: a readiness probe that calls a dependency turns a brief outage into
-a container restart loop.
+- title-constrained hybrid branch, weight `0.80`
+- global hybrid branch, weight `0.20`
 
-Run **exactly one instance**. The sparse encoder writes a shared vocab file
-and is single-writer.
+The branches are combined with weighted reciprocal-rank fusion, deduplicated by
+chunk ID, then diversified. Below the confidence threshold, lesson constraints
+are dropped and retrieval remains global.
 
-## What this service does and does not decide
+Kafka delivery is at-least-once. UUID5 point IDs make redelivery idempotent.
+Failed batches seek every affected partition back to its first failed offset;
+offsets are committed only after Qdrant succeeds or confirmed DLQ delivery.
 
-It applies filters and returns ranked hits. It does not run the retrieval
-*loop* — no retries, no query rewriting, no budget escalation, no BM25 fusion,
-no diversification. Those are policy and live in agentic-service's retrieval
-agent, so tuning retrieval never means redeploying the service that also runs
-the ingestion consumer.
+## Fresh local setup
 
-Two things it does decide, because they need the store and nothing else does:
-
-**Ownership.** `user_id` and `doc_ids` are typed request fields, and the
-filter is built here rather than trusted from the caller. Qdrant has no
-concept of ownership — a query without `user_id` returns every user's chunks —
-so a `Search` without one is rejected outright.
-
-**Which keys are filterable.** `_FILTERABLE` in `grpc_server.py` is an
-allowlist. A key that is not in the payload is not an error in Qdrant: it
-matches zero points and comes back as a successful empty result, which reads
-as "no relevant documents" while the material sits right there. `lesson_no` is
-the live example — ingest parses the number out of the section heading and
-stores only `lesson_title`, so filtering on it wiped out every hit.
-
-Filter values are strings on the wire, one type for every key, so integer keys
-are coerced on arrival. `MatchValue("42")` does not match the integer `42`; it
-matches nothing, silently.
-
-## ListTitles
-
-Returns the distinct `lesson_title` values for a user, with chunk counts — the
-EXACT stored strings, including any double spaces PDF extraction left behind.
-
-It exists because the caller used to ask an LLM to produce a title and filter
-on the result. The model has never seen the corpus, so it produced something
-plausible rather than something real, and the filter excluded an entire lesson
-while reporting success. Handing back the real strings turns an open-ended
-guess into a closed-set choice.
-
-The scan uses payload projection (`with_payload=["lesson_title"]`) and is
-capped at 20 pages of 1000. `truncated` says the cap was hit, which matters
-before concluding a title does not exist.
-
-## The proto
-
-`proto/search.proto` is duplicated byte-for-byte in agentic-service. Copying
-rather than sharing a package is deliberate at seven services: a shared proto
-means a version bump has to land in both repos before either can deploy.
-
-**Additive only.** Never renumber a field, never reuse a number. Both services
-deploy independently, so at any moment an old client is talking to a new
-server or the reverse.
+Start PostgreSQL, Redis, Kafka, and Qdrant from the agentic-service compose file.
 
 ```bash
-./scripts/gen_proto.sh          # then do the same in agentic-service
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -e ".[dev]"
+cp .env.example .env
 ```
 
-The checked-in `search_pb2.py` omits protoc's `ValidateProtobufRuntimeVersion`
-call, which pins a *minimum* protobuf runtime and raises on import when the
-installed one is older. That turns a version skew between the two services
-into an ImportError at startup. The descriptor itself is identical.
+Set at least:
 
-## Config
+```dotenv
+QDRANT_ENDPOINT=http://localhost:6333
+QDRANT_COLLECTION=sinhala_books_v5
+KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+REDIS_URL=redis://localhost:6379/0
+GRPC_SERVICE_TOKEN=the-same-value-as-EMBEDDING_SERVICE_TOKEN
+```
 
-| Variable | Default |
-|---|---|
-| `QDRANT_CLUSTER_ENDPOINT` | — |
-| `QDRANT_CLUSTER_API` | — |
-| `QDRANT_COLLECTION` | `sinhala_books_v3` |
-| `SPARSE_VOCAB_PATH` | `./_store/sparse_vocab.json` |
-| `GRPC_PORT` | `50051` |
-| `HTTP_PORT` | `8004` |
+Create or validate the collection and all payload indexes. The command is
+idempotent and refuses incompatible dense dimensions or missing named vectors.
 
-Without the vocab file the sparse leg returns nothing and hybrid degrades to
-dense-only — silently. `Health` returns a hash of it (`unavailable` when
-missing), which is how agentic-service's `scripts/check.py` catches it.
+```bash
+python -m embedding_service create-collection
+python -m embedding_service check
+python -m embedding_service serve
+```
 
-## Crash guards
+Verify:
 
-Every background thread exits the *process* on an unhandled exception rather
-than dying quietly. Without that, a dead thread sits behind a healthy HTTP
-probe: the container reports fine and nothing works. It matters more now that
-search runs here — a dead gRPC thread means chat hangs while `/health` keeps
-saying ok.
+```bash
+curl http://localhost:8004/health/ready
+python -m grpc_tools.protoc -I proto --python_out=/tmp --grpc_python_out=/tmp proto/search.proto
+pytest
+```
+
+## Test ingestion event
+
+Publish a validated chunk to `documents.chunks`:
+
+```bash
+docker compose -f ../agentic-service/docker-compose.infra.yml exec -T kafka \
+  kafka-console-producer.sh --bootstrap-server kafka:9092 --topic documents.chunks <<'JSON'
+{"chunk":{"chunk_id":"demo-1","doc_id":"22222222-2222-2222-2222-222222222222","user_id":"11111111-1111-1111-1111-111111111111","text":"ජල චක්‍රයේ වාෂ්පීකරණය ඝනීභවනය සහ වර්ෂාපතනය යන අදියර ඇතුළත් වේ.","embed_text":"ජල චක්‍රයේ වාෂ්පීකරණය ඝනීභවනය සහ වර්ෂාපතනය යන අදියර ඇතුළත් වේ.","source_name":"science.pdf","page":3,"section_path":["ජල චක්‍රය"]}}
+JSON
+```
+
+Successful ingestion increments the user's Redis document generation, so old
+semantic-cache answers cannot survive a document update.
