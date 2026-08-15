@@ -9,25 +9,14 @@ from typing import Literal
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# The service root: <root>/src/<package>/config/settings.py -> parents[3].
-# Resolved from the MODULE path, not the working directory, because
-# ``env_file=".env"`` is CWD-relative -- running the CLI from src/ silently
-# found no .env and every required field reported "Field required". The CWD
-# entry is kept first so a local override still wins when you do run from the
-# root.
+
 _SERVICE_ROOT = Path(__file__).resolve().parents[3]
 ENV_FILES = (".env", _SERVICE_ROOT / ".env")
 
 
 class _BaseConfig(BaseSettings):
-    """Shared base so every settings group reads the same .env file.
-
-    This is load-bearing, not cosmetic. Nested settings groups are created via
-    ``default_factory``, and pydantic-settings builds each group's sources from
-    ITS OWN ``model_config`` -- it does not inherit the parent's. Putting
-    ``env_file`` only on the top-level ``Settings`` therefore meant every nested
-    group read real OS environment variables but silently ignored ``.env``, so
-    ``QDRANT_ENDPOINT=...`` in the file produced "Field required".
+    """
+    Shared base so every settings group reads the same .env file.
     """
 
     model_config = SettingsConfigDict(env_file=ENV_FILES, env_file_encoding="utf-8", extra="ignore")
@@ -76,9 +65,6 @@ class KafkaSettings(_BaseConfig):
     batch_timeout_seconds: float = Field(2.0, gt=0, le=60)
     max_poll_interval_ms: int = Field(600_000, ge=10_000)
     session_timeout_ms: int = Field(45_000, ge=6_000)
-    # A batch failing this many times is dead-lettered. Without a ceiling a
-    # single poison message halts its partition permanently while the topic
-    # still looks healthy.
     max_batch_attempts: int = Field(3, ge=1, le=10)
 
 
@@ -93,11 +79,8 @@ class EmbeddingSettings(_BaseConfig):
     model_name: str = "BAAI/bge-m3"
     dimensions: int = Field(1024, ge=1)
     encode_batch_size: int = Field(16, ge=1, le=256)
-    # ONNX Runtime thread count, set explicitly rather than letting the runtime
-    # claim every core on a shared VM.
     onnx_threads: int = Field(2, ge=1, le=64)
     inference_workers: int = Field(2, ge=1, le=16)
-    # BGE-M3 takes no instruction prefix; kept configurable for other models.
     query_prefix: str = ""
     document_prefix: str = ""
     max_text_length: int = Field(8192, ge=64)
@@ -125,15 +108,11 @@ class RetrievalSettings(_BaseConfig):
         extra="ignore",
     )
 
-    # Server-side RRF fetches this many per leg before fusing. Fetching exactly
-    # `limit` per leg hides two-leg consensus sitting just below the cutoff.
     oversample: float = Field(3.0, ge=1.0, le=10.0)
     title_scan_max_pages: int = Field(20, ge=1)
     title_scan_page_size: int = Field(1000, ge=1, le=10_000)
     title_cache_ttl_seconds: float = Field(300.0, ge=0)
     min_chunk_words: int = Field(8, ge=0)
-    # Post-fusion near-duplicate removal. Textbook PDFs repeat headers across
-    # pages, so an undiversified top-10 is often the same paragraph five times.
     diversity_threshold: float = Field(0.8, ge=0.0, le=1.0)
     title_confidence_threshold: float = Field(0.75, ge=0.0, le=1.0)
     title_weight: float = Field(0.8, gt=0.0, lt=1.0)

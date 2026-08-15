@@ -1,16 +1,14 @@
-"""gRPC server assembly.
+"""
+gRPC server assembly.
 
-Adds four things the previous server lacked and that anything running in
-production is expected to expose:
+Adds four things:
 
-  * STANDARD HEALTH. ``grpc.health.v1.Health`` rather than a bespoke ``Health``
-    RPC. Load balancers, Kubernetes ``grpc_health_probe``, and Envoy all speak
-    it; nothing speaks a custom one.
-  * REFLECTION. Without it ``grpcurl`` cannot introspect the service, so
+  * STANDARD HEALTH. `grpc.health.v1.Health`.
+  * REFLECTION. Without it `grpcurl` cannot introspect the service, so
     debugging a live instance means writing a client first.
   * INTERCEPTORS. Logging, metrics, and a correlation id on every call, in one
     place instead of repeated per handler.
-  * TLS. The old server bound ``add_insecure_port`` unconditionally. Optional
+  * TLS. The old server bound `add_insecure_port` unconditionally. Optional
     server TLS with optional client-cert verification is available here for
     anything crossing a trust boundary.
 """
@@ -113,8 +111,6 @@ async def build_server(
         options=[
             ("grpc.max_send_message_length", cfg.grpc_max_message_bytes),
             ("grpc.max_receive_message_length", cfg.grpc_max_message_bytes),
-            # Keepalives so a silently dropped connection surfaces here rather
-            # than on the next user request.
             ("grpc.keepalive_time_ms", 30_000),
             ("grpc.keepalive_timeout_ms", 10_000),
             ("grpc.keepalive_permit_without_calls", 1),
@@ -126,8 +122,6 @@ async def build_server(
 
     health_servicer = health.HealthServicer()
     health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
-    # NOT_SERVING until the supervisor marks the service ready, so a client
-    # connecting during model load is told to wait instead of timing out.
     health_servicer.set(SERVICE_NAME, health_pb2.HealthCheckResponse.NOT_SERVING)
     health_servicer.set("", health_pb2.HealthCheckResponse.NOT_SERVING)
 

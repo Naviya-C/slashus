@@ -42,12 +42,8 @@ log = structlog.get_logger(__name__)
 
 
 class DenseEncoder:
-    """BGE-M3 dense embeddings.
-
-    Note there is NO "query: " prefix. That is an E5 convention; BGE-M3 is
-    trained without instruction prefixes, and adding one to queries only means
-    queries and documents land in different distributions -- a silent, uniform
-    loss of recall. Prefixes stay configurable for models that do want them.
+    """
+    BGE-M3 dense embeddings.
     """
 
     def __init__(self, settings: EmbeddingSettings | None = None) -> None:
@@ -56,9 +52,7 @@ class DenseEncoder:
         self._executor = ThreadPoolExecutor(
             max_workers=self._cfg.inference_workers, thread_name_prefix="dense"
         )
-        # Bounds the queue explicitly. Without it a burst builds an unbounded
-        # backlog of futures and the symptom is memory growth, not a clear
-        # rejection.
+
         self._gate = asyncio.Semaphore(self._cfg.inference_workers)
 
     @property
@@ -70,11 +64,8 @@ class DenseEncoder:
         return self._model is not None
 
     async def warmup(self) -> None:
-        """Load and run one forward pass before declaring readiness.
-
-        Loading eagerly means the readiness probe stays red until the service
-        can actually serve, instead of the first request after a deploy
-        absorbing a multi-second stall.
+        """
+        Load and run one forward pass before declaring readiness.
         """
         if self._model is not None:
             return
@@ -105,7 +96,7 @@ class DenseEncoder:
         log.info("dense.ready", dimensions=self._cfg.dimensions)
 
     def _encode_sync(self, texts: list[str]) -> list[list[float]]:
-        if self._model is None:  # pragma: no cover - guarded by warmup()
+        if self._model is None: 
             raise RuntimeError("dense encoder used before warmup()")
         return [
             list(map(float, vector))
