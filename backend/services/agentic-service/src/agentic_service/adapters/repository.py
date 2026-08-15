@@ -1,21 +1,11 @@
-"""Postgres access for sessions, messages, practice sets and answers.
+"""
+Postgres access for sessions, messages, practice sets and answers.
 
-Every method takes ``user_id`` and filters on it. Session and question ids
+Every method takes `user_id` and filters on it. Session and question ids
 appear in URLs and in the browser, so a query scoped only by id would let any
 authenticated caller read or mark another user's work. The gateway proved WHO
-they are; it did not prove the row is theirs.
+they are it did not prove the row is theirs.
 
-WHAT CHANGED
-------------
-* ASYNC. v1 used the blocking driver from sync endpoints, so every query held a
-  threadpool worker for its full duration.
-* ONE TRANSACTION PER UNIT OF WORK. ``add_turn`` in v1 opened a session, added
-  two messages and ran a separate UPDATE, but ``save_answer`` did a SELECT then
-  an INSERT in a pattern two concurrent submissions could race past. Ownership
-  is verified inside the same transaction as the write.
-* NO ORM OBJECTS ESCAPE. v1 returned a live ``ChatSession`` from inside a
-  closed session scope; touching a lazy attribute afterwards raised
-  ``DetachedInstanceError``. Plain dicts cross the boundary now.
 """
 
 from __future__ import annotations
@@ -56,7 +46,7 @@ class SqlChatRepository:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._sf = session_factory
 
-    # -- sessions ---------------------------------------------------------
+    # ------------------------sessions---------------------------------
 
     async def get_or_create_session(
         self,
@@ -80,8 +70,6 @@ class SqlChatRepository:
                     return self._session_dict(existing)
 
             created = ChatSession(
-                # Honour a client-supplied id only after confirming it is not
-                # already owned by someone else -- the lookup above did that.
                 id=session_id or None,
                 user_id=user_id,
                 title=first_message[:TITLE_MAX],
@@ -131,7 +119,7 @@ class SqlChatRepository:
             "last_message_at": s.last_message_at.isoformat(),
         }
 
-    # -- messages ---------------------------------------------------------
+    # ---------------------------messages------------------------------
 
     async def list_messages(
         self,
@@ -185,11 +173,6 @@ class SqlChatRepository:
         citations: list[dict[str, Any]] | None = None,
         practice_set_id: UUID | None = None,
     ) -> None:
-        """Both messages and the session bump in ONE transaction.
-
-        Splitting them lets a crash leave a user message with no reply, or a
-        session whose ``last_message_at`` disagrees with its newest message.
-        """
         async with self._sf() as db, db.begin():
             owned = await db.scalar(
                 select(func.count())
@@ -225,7 +208,7 @@ class SqlChatRepository:
                 update(ChatSession).where(ChatSession.id == session_id).values(last_message_at=now)
             )
 
-    # -- practice ---------------------------------------------------------
+    # -------------------------practice--------------------------------
 
     async def save_practice_set(
         self,
@@ -319,7 +302,7 @@ class SqlChatRepository:
             "rubric_results": a.rubric_results or [],
         }
 
-    # -- marking ----------------------------------------------------------
+    # -------------------------marking---------------------------------
 
     async def get_question(self, *, question_id: UUID, user_id: UUID) -> dict[str, Any] | None:
         async with self._sf() as db:
@@ -386,7 +369,7 @@ class SqlChatRepository:
                 )
             )
 
-    # -- health -----------------------------------------------------------
+    # -------------------------health----------------------------------
 
     async def healthy(self) -> bool:
         try:

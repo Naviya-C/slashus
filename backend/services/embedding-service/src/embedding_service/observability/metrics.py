@@ -1,4 +1,5 @@
-"""Prometheus metrics.
+"""
+Prometheus metrics.
 
 The previous service had none. "Retrieval got worse last Tuesday" was
 answerable only by reading logs, and consumer lag -- the single most important
@@ -9,7 +10,7 @@ from __future__ import annotations
 
 from prometheus_client import Counter, Gauge, Histogram
 
-# -- ingest ---------------------------------------------------------------
+# --------------------------ingest-------------------------------------
 
 CHUNKS_INGESTED = Counter(
     "embedding_chunks_ingested_total", "Chunks embedded and written to Qdrant"
@@ -34,7 +35,7 @@ CONSUMER_LAG = Gauge(
     ["partition"],
 )
 
-# -- search ---------------------------------------------------------------
+# -------------------------search---------------------------------------
 
 SEARCH_DURATION = Histogram(
     "embedding_search_seconds",
@@ -50,7 +51,7 @@ SEARCH_HITS = Histogram(
 )
 SEARCH_EMPTY = Counter("embedding_search_empty_total", "Searches returning nothing", ["reason"])
 
-# -- rpc ------------------------------------------------------------------
+# ----------------------------rpc--------------------------------------
 
 GRPC_REQUESTS = Counter("embedding_grpc_requests_total", "gRPC calls handled", ["method", "code"])
 GRPC_DURATION = Histogram(
@@ -60,7 +61,7 @@ GRPC_DURATION = Histogram(
     buckets=(0.005, 0.01, 0.05, 0.1, 0.5, 1, 2.5, 5, 10, 30),
 )
 
-# -- lifecycle ------------------------------------------------------------
+# ------------------------lifecycle------------------------------------
 
 COMPONENT_UP = Gauge(
     "embedding_component_up", "1 when a background component is healthy", ["component"]

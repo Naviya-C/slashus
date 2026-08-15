@@ -1,4 +1,5 @@
-"""Component health registry.
+"""
+Component health registry.
 
 THE PROBLEM THIS SOLVES
 -----------------------
@@ -50,8 +51,6 @@ class ComponentStatus:
     name: str
     state: ComponentState = ComponentState.STARTING
     detail: str = ""
-    # Required components gate readiness. Optional ones (a metrics exporter,
-    # say) can be degraded without taking the instance out of rotation.
     required: bool = True
     updated_at: float = field(default_factory=time.monotonic)
 
@@ -80,7 +79,8 @@ class HealthRegistry:
         COMPONENT_UP.labels(component=name).set(1 if state is ComponentState.HEALTHY else 0)
 
     def begin_shutdown(self) -> None:
-        """Fail readiness immediately, keep liveness green.
+        """
+        Fail readiness immediately, keep liveness green.
 
         Called on SIGTERM so the load balancer drains this instance while
         in-flight requests finish, instead of receiving new work right up to

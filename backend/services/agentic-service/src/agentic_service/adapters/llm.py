@@ -1,16 +1,3 @@
-"""Model adapter.
-
-``ChatOpenAI`` against DashScope's OpenAI-compatible endpoint. Using the
-framework's chat model rather than a hand-rolled client is what makes native
-tool calling available: ``bind_tools`` serialises the pydantic argument schemas
-into the function-calling format, and the loop in ``create_react_agent`` reads
-``tool_calls`` off the response. A bespoke JSON-prompting client cannot do that
-without reimplementing the protocol.
-
-Retries are configured in ONE place (``max_retries`` on the client). Nesting a
-tenacity decorator over a client that already retries multiplies the two.
-"""
-
 from __future__ import annotations
 
 import json
@@ -29,6 +16,7 @@ log = structlog.get_logger(__name__)
 def build_model(settings: LLMSettings) -> ChatOpenAI:
     if not settings.api_key:
         raise ValueError("LLM_API_KEY is not set")
+    
     return ChatOpenAI(
         model=settings.model,
         api_key=SecretStr(settings.api_key.get_secret_value()),
@@ -37,19 +25,11 @@ def build_model(settings: LLMSettings) -> ChatOpenAI:
         max_completion_tokens=settings.max_output_tokens,
         timeout=settings.request_timeout_seconds,
         max_retries=settings.max_retries,
-        # Streaming usage so token counts are attributable per turn rather than
-        # invisible, which is how an agent's cost silently triples.
         stream_usage=True,
     )
 
 
 class JsonLLM:
-    """Thin wrapper for the non-agent calls (memory consolidation).
-
-    Consolidation is a background structured-extraction job, not a
-    conversation, so it does not need the agent loop -- just JSON out.
-    """
-
     def __init__(self, model: ChatOpenAI) -> None:
         self._model = model
 
@@ -60,6 +40,7 @@ class JsonLLM:
             LLM_TOKENS.labels(kind="completion").inc(usage.get("output_tokens", 0))
 
         text = str(response.content).strip()
+        
         try:
             parsed = json.loads(text)
         except json.JSONDecodeError:
@@ -70,6 +51,7 @@ class JsonLLM:
             parsed = json.loads(text[start : end + 1])
 
         LLM_CALLS.labels(outcome="ok").inc()
+        
         if not isinstance(parsed, dict):
             raise ValueError(f"{label} returned {type(parsed).__name__}, expected object")
         return parsed

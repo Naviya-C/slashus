@@ -19,13 +19,9 @@ log = structlog.get_logger(__name__)
 
 _LESSON_RE = re.compile(r"^\s*(\d+)\s+(.*)$")
 
-# Length filtering is skipped for these: a table or an image caption is short
-# by nature, and dropping them loses content the text filter was never aimed at.
+
 _LENGTH_EXEMPT = frozenset({BlockType.TABLE, BlockType.IMAGE})
 
-# Payload keys carried through from the ingest event when present. Named
-# explicitly rather than copying ``extra`` wholesale, so an upstream service
-# adding a field cannot silently widen this service's storage contract.
 _CARRIED_KEYS = (
     "table_id",
     "n_rows",

@@ -8,12 +8,12 @@ WHAT CHANGED
   quietly stopped. A batch now gets a bounded number of attempts; after that
   the offending messages go to a DLQ topic and the consumer moves on.
 
-* EXPLICIT OFFSET COMMITS. ``commit(asynchronous=False)`` with no arguments
+* EXPLICIT OFFSET COMMITS. `commit(asynchronous=False)` with no arguments
   commits the consumer's current position on every assigned partition, which
   is only accidentally correct. Offsets are now derived from the messages
   actually processed.
 
-* REBALANCE HANDLING. Without ``on_revoke`` an in-flight batch could have its
+* REBALANCE HANDLING. Without `on_revoke` an in-flight batch could have its
   partitions reassigned mid-work and the subsequent commit would raise. The
   handler now stops the batch cleanly and lets the new owner redeliver -- safe
   because writes are idempotent.
@@ -24,7 +24,7 @@ WHAT CHANGED
 DELIVERY SEMANTICS
 ------------------
 At-least-once with idempotent writes. Offsets commit only after the whole batch
-lands, so a crash mid-batch redelivers up to ``batch_size`` chunks. That is safe
+lands, so a crash mid-batch redelivers up to `batch_size` chunks. That is safe
 because the point id is uuid5 of the chunk id: a replay overwrites its own point.
 """
 
@@ -62,9 +62,6 @@ def build_consumer_config(cfg: KafkaSettings) -> dict[str, Any]:
         "max.poll.interval.ms": cfg.max_poll_interval_ms,
         "session.timeout.ms": cfg.session_timeout_ms,
         "security.protocol": cfg.security_protocol,
-        # Cooperative rebalancing: an added replica takes over a subset of
-        # partitions instead of every consumer dropping everything and
-        # re-acquiring, which with a slow CPU embedder means a long stall.
         "partition.assignment.strategy": "cooperative-sticky",
     }
     if cfg.sasl_mechanism:
@@ -97,9 +94,6 @@ class DeadLetterProducer:
             DLQ_MESSAGES.labels(reason=reason[:40]).inc()
             return True
         except (KafkaException, BufferError):
-            # If the DLQ itself is unavailable, log loudly and drop. Blocking
-            # the consumer on a broken DLQ turns one bad message into a total
-            # ingest outage.
             log.error("dlq.publish_failed", topic=self._topic, reason=reason, exc_info=True)
             return False
 
@@ -128,7 +122,7 @@ class ChunkConsumer:
         self._stopping = asyncio.Event()
         self._attempts: dict[tuple[str, int], int] = defaultdict(int)
 
-    # -- rebalance --------------------------------------------------------
+    # ------------------------rebalance---------------------------------
 
     def _on_assign(self, consumer: Consumer, partitions: list[TopicPartition]) -> None:
         log.info("kafka.assigned", partitions=[f"{p.topic}:{p.partition}" for p in partitions])
@@ -140,10 +134,11 @@ class ChunkConsumer:
             self._attempts.pop((p.topic, p.partition), None)
         consumer.incremental_unassign(partitions)
 
-    # -- decoding ---------------------------------------------------------
+    # -------------------------decoding---------------------------------
 
     def _decode(self, messages: list[Message]) -> tuple[list[IngestChunk], str | None]:
-        """Decode messages, dead-lettering any that cannot be parsed.
+        """
+        Decode messages, dead-lettering any that cannot be parsed.
 
         Returns the chunks and the collection they belong to. Previously a
         malformed message was logged and dropped; it now lands in the DLQ so it
@@ -164,9 +159,6 @@ class ChunkConsumer:
                 event = json.loads(raw)
                 collection = event.get("collection") or collection
                 payload = event.get("chunk", event)
-                # Ingest events nest identifiers under `extra`; flatten so the
-                # model validates them as first-class required fields rather
-                # than the caller reaching into a dict and raising KeyError.
                 merged = {**payload, **(payload.get("extra") or {})}
                 chunks.append(IngestChunk.model_validate(merged))
             except Exception as exc:
@@ -180,7 +172,7 @@ class ChunkConsumer:
 
         return chunks, collection
 
-    # -- offsets ----------------------------------------------------------
+    # ---------------------------offsets--------------------------------
 
     @staticmethod
     def _offsets_for(messages: list[Message]) -> list[TopicPartition]:
@@ -216,7 +208,7 @@ class ChunkConsumer:
                 )
         return accepted and self._dlq.flush()
 
-    # -- main loop --------------------------------------------------------
+    # ------------------------ main loop--------------------------------
 
     async def run(self) -> None:
         cfg = self._cfg
@@ -230,8 +222,6 @@ class ChunkConsumer:
 
         try:
             while not self._stopping.is_set():
-                # consume() blocks; run it off the event loop so the gRPC and
-                # HTTP servers in this process stay responsive.
                 messages = await loop.run_in_executor(
                     None,
                     lambda: self._consumer.consume(
@@ -248,9 +238,6 @@ class ChunkConsumer:
             log.info("kafka.cancelled")
             raise
         except Exception as exc:
-            # Reported as FAILED rather than killed with os._exit: readiness
-            # goes red, the orchestrator stops routing to this instance, and
-            # shutdown still runs its cleanup.
             self._health.set(COMPONENT, ComponentState.FAILED, str(exc)[:200])
             log.error("kafka.loop_failed", exc_info=True)
             raise
@@ -284,9 +271,6 @@ class ChunkConsumer:
             BATCH_FAILURES.labels(stage="ingest").inc()
 
             if attempts >= self._cfg.max_batch_attempts:
-                # Bounded: the batch has failed repeatedly, so it is treated as
-                # poison and moved aside. Without this the partition never
-                # advances and every later document waits behind it forever.
                 log.error(
                     "kafka.batch_dead_lettered",
                     attempts=attempts,

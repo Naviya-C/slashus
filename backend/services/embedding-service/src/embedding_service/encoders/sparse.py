@@ -40,9 +40,6 @@ import mmh3
 
 from embedding_service.domain.models import SparseVector
 
-# Sinhala grapheme runs, Latin words, digit runs. The Sinhala range is matched
-# as a whole run INCLUDING combining marks, which is precisely what the
-# generic tokenizer fails to do.
 _TOKEN_RE = re.compile(r"[\u0D80-\u0DFF\u200D]+|[a-zA-Z]+|\d+")
 _ZWJ = "\u200d"
 
@@ -51,8 +48,6 @@ def tokenize(text: str, *, min_length: int = 2) -> list[str]:
     """Tokenize mixed Sinhala/English/numeric text."""
     tokens: list[str] = []
     for raw in _TOKEN_RE.findall(text.lower()):
-        # A ZWJ inside a word is part of the grapheme (ශ්‍ර); one at the edge is
-        # noise from PDF extraction.
         token = raw.strip(_ZWJ)
         if len(token) >= min_length:
             tokens.append(token)
@@ -93,8 +88,6 @@ class SinhalaSparseEncoder:
         if not counts:
             return SparseVector()
 
-        # BM25 term-frequency saturation. Raw counts let one repeated term
-        # dominate a chunk; Qdrant's Modifier.IDF supplies the other half.
         indices = sorted(counts)
         values = [(counts[i] * (self._k1 + 1.0)) / (counts[i] + self._k1) for i in indices]
         return SparseVector(indices=indices, values=values)
@@ -102,7 +95,5 @@ class SinhalaSparseEncoder:
     def encode_batch(self, texts: Sequence[str] | Iterable[str]) -> list[SparseVector]:
         return [self.encode(t) for t in texts]
 
-    # Queries and documents encode identically by construction, so a term
-    # present in a document is always findable by a query containing it.
     encode_documents = encode_batch
     encode_query = encode

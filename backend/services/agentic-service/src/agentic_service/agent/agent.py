@@ -1,12 +1,11 @@
-"""The agent.
+"""
+The agent.
 
-A real ReAct loop built on ``langchain.agents.create_agent``: tool schemas are
+A real ReAct loop built on `langchain.agents.create_agent` tool schemas are
 bound to the model via native function calling, and the model decides at each
 iteration whether to call a tool, which one, with what arguments, or to answer.
 Nothing here prescribes a path.
 
-(``langgraph.prebuilt.create_react_agent`` is the older entry point, deprecated
-for removal in LangGraph v2. This uses the current middleware API.)
 
 WHERE THE FOUR MEMORY TYPES ATTACH
 ----------------------------------
@@ -16,21 +15,12 @@ WHERE THE FOUR MEMORY TYPES ATTACH
                 under thread_id.
 
     SEMANTIC    Recalled by vector search in ``MemoryRecallMiddleware`` and
-                injected into the system prompt. Written by the
-                ``remember_about_student`` tool (hot path) and by consolidation
-                (cold path).
+                injected into the system prompt. 
 
     EPISODIC    Recalled as few-shot exemplars by the same middleware. Written
                 only by consolidation, after the turn completes.
 
     PROCEDURAL  Loaded as behavioural rules and injected into the system
-                prompt, so one learned rule changes every subsequent turn.
-                Written by ``learn_tutoring_rule`` and by consolidation.
-
-Summarisation, tool-call limits and model-call limits are framework middleware,
-so they are maintained upstream instead of hand-rolled. What is custom is the
-one thing the framework has no opinion about: which memories a tutor should
-recall, and how they should read in the prompt.
 """
 
 from __future__ import annotations
@@ -65,12 +55,8 @@ class TutorState(AgentState):
 
 
 class MemoryRecallMiddleware(AgentMiddleware):
-    """Injects semantic, episodic and procedural memory into the system prompt.
-
-    Recall runs in ``abefore_model`` -- which can write state -- and is cached
-    there for the rest of the loop. Doing it in the prompt hook instead would
-    repeat an identical memory search on every iteration: five tool calls, five
-    searches, one question.
+    """
+    Injects semantic, episodic and procedural memory into the system prompt.
     """
 
     state_schema = TutorState
@@ -137,9 +123,6 @@ def build_agent(
     middleware: list[AgentMiddleware] = [MemoryRecallMiddleware(memory, base_prompt)]
 
     if settings.summarization_enabled:
-        # WORKING MEMORY. A tool-calling agent emits a message per call and per
-        # result, each carrying full retrieved passages. Unbounded, a long
-        # session drags every stale retrieval into every later model call.
         middleware.append(
             SummarizationMiddleware(
                 model=summarization_model or model,
@@ -148,20 +131,6 @@ def build_agent(
             )
         )
 
-    # A real agent chooses its own path, so these ceilings are what guarantee
-    # termination.
-    #
-    # TOOL CALLS are bounded by framework middleware, which ends the turn
-    # gracefully with a message rather than raising.
-    #
-    # MODEL CALLS are bounded by LangGraph's own `recursion_limit`, passed per
-    # invocation in `agent.runner`, NOT by ModelCallLimitMiddleware.
-    # Verified against langchain 1.3.15: combining ModelCallLimitMiddleware
-    # with ToolCallLimitMiddleware makes the graph loop until it hits the
-    # recursion limit, in either order and with either run_limit or
-    # thread_limit. Each works alone. Since recursion_limit already bounds
-    # total graph steps -- and therefore model calls -- the tool limit is the
-    # one worth keeping as middleware.
     middleware.append(ToolCallLimitMiddleware(thread_limit=settings.max_tool_calls))
 
     agent = create_agent(

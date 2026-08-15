@@ -7,12 +7,12 @@ Previous builds ran the dense leg and the sparse leg as two separate
 round trips per search, two result sets serialised over the wire, and a fusion
 implementation to maintain.
 
-Qdrant does this natively with ``prefetch`` + ``FusionQuery(Fusion.RRF)``: both
+Qdrant does this natively with `prefetch` + `FusionQuery(Fusion.RRF)`: both
 legs execute inside the database, fusion happens where the data already is, and
 one response comes back. One round trip, less bytes on the wire, and the
 ranking stays adjacent to the index.
 
-What stays on this side is de-duplication (``store.ranking``), which Qdrant has
+What stays on this side is de-duplication (`store.ranking`), which Qdrant has
 no notion of, and the ownership filter, which is built here so that no code
 path can construct a search without it.
 """
@@ -81,9 +81,6 @@ def build_filter(
         if not values:
             continue
         if key not in FILTERABLE_KEYS:
-            # An unknown key matches nothing server-side, which is
-            # indistinguishable from a filter that legitimately excluded
-            # everything. Rejecting it loudly is the only way to tell.
             log.warning("qdrant.filter_rejected", key=key)
             continue
         coerced = [_coerce(key, v) for v in values]
@@ -125,7 +122,7 @@ class QdrantStore:
     def client(self) -> AsyncQdrantClient:
         return self._client
 
-    # -- writes -----------------------------------------------------------
+    # ---------------------------writes---------------------------------
 
     @_retry_transport
     async def upsert(
@@ -161,7 +158,7 @@ class QdrantStore:
                 self._title_cache.pop(cache_key, None)
         return len(structs)
 
-    # -- reads ------------------------------------------------------------
+    # --------------------------reads-----------------------------------
 
     @_retry_transport
     async def count_owned(self, *, collection: str, user_id: str, doc_ids: Sequence[str]) -> int:
@@ -239,8 +236,7 @@ class QdrantStore:
 
         try:
             if len(prefetch) == 1:
-                # A single leg needs no fusion; issuing an RRF over one list is
-                # wasted work and reorders nothing.
+
                 leg = prefetch[0]
                 response = await self._client.query_points(
                     collection_name=collection,
@@ -266,8 +262,11 @@ class QdrantStore:
     async def list_titles(
         self, *, collection: str, user_id: str, doc_ids: Sequence[str], limit: int
     ) -> TitleListing:
-        """Scroll and count distinct lesson titles. TTL-cached: this is an
-        O(corpus) scan that the agent may call on any turn."""
+        """
+        Scroll and count distinct lesson titles. TTL-cached: this is an
+        O(corpus) scan that the agent may call on any turn.
+        """
+        
         cache_key = f"{collection}:{user_id}:{','.join(sorted(doc_ids))}"
         ttl = self._retrieval.title_cache_ttl_seconds
         now = time.monotonic()
@@ -342,7 +341,7 @@ class QdrantStore:
             self._title_cache[cache_key] = (now, listing)
         return listing
 
-    # -- lifecycle --------------------------------------------------------
+    # ------------------------lifecycle--------------------------------
 
     async def ping(self) -> bool:
         try:

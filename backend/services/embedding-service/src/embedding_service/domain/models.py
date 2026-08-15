@@ -73,8 +73,6 @@ class IngestChunk(BaseModel):
 
     @property
     def point_id(self) -> str:
-        # Deterministic: a Kafka replay overwrites its own point instead of
-        # creating a duplicate. This is what makes at-least-once safe.
         return str(uuid.uuid5(POINT_ID_NAMESPACE, self.chunk_id))
 
 

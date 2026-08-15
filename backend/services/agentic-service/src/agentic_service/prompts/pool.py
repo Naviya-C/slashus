@@ -14,9 +14,7 @@ log = structlog.get_logger(__name__)
 PROMPT_DIR = Path(__file__).parent
 _VAR_RE = re.compile(r"\{\{(\w+)\}\}")
 
-# Retrieved passages and student answers reach the model as tool results, which
-# the model is instructed to treat as data. Anything that tries to close a fence
-# or open a new conversational turn is defanged first.
+
 _FENCE_BREAKERS = re.compile(
     r"(?i)(</?(?:untrusted|retrieved_material|student_answer)[^>]*>"
     r"|^\s*(?:system|assistant|user)\s*:)",
@@ -59,8 +57,6 @@ class PromptPool:
         template = self._templates.get(name)
         if template is None:
             raise KeyError(f"unknown prompt template {name!r}")
-        # A missing variable must raise rather than leave "{{transcript}}" in
-        # the prompt, which yields a fluent answer grounded in nothing.
         if missing := self._variables[name] - set(values):
             raise MissingPromptVariablesError(f"{name}.md missing: {sorted(missing)}")
         return _VAR_RE.sub(lambda m: str(values[m.group(1)]), template)

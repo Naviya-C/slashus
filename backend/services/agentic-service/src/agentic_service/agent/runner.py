@@ -1,20 +1,6 @@
-"""Runs one turn of the agent.
+"""
+Runs one turn of the agent.
 
-Three responsibilities the agent graph itself should not carry:
-
-  * A HARD TIMEOUT. A real agent chooses its own path, so nothing in the loop
-    guarantees termination in bounded wall-clock time -- ``recursion_limit``
-    bounds the number of steps, not how long they take. A model that calls a
-    slow tool ten times stays inside the recursion limit and still holds the
-    connection for minutes.
-
-  * BACKGROUND CONSOLIDATION. Episodic and procedural memory are written after
-    the response is sent, so the student never waits for them. This is the
-    whole reason consolidation is not a node in the graph.
-
-  * OBSERVABILITY of what the model actually chose. In a hardcoded pipeline the
-    tool sequence is a constant; here it is the primary thing worth logging,
-    because it is the only record of what the agent decided to do.
 """
 
 from __future__ import annotations

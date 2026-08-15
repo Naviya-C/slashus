@@ -32,14 +32,17 @@ class AnswerEvaluator:
                 "marks": maximum if correct else 0,
                 "max_marks": maximum,
                 "is_correct": correct,
+                
                 "feedback": question.get("explanation")
                 or ("Correct." if correct else "Review the explanation and try again."),
+                
                 "revealed_answer": (
                     question.get("options", [])[question.get("correct_index")]
                     if question.get("correct_index") is not None
                     and question.get("correct_index") < len(question.get("options", []))
                     else str(question.get("correct_index"))
                 ),
+                
                 "rubric_results": [],
             }
         else:
