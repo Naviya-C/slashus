@@ -1,14 +1,5 @@
-"""Component health registry.
-
-THE PROBLEM THIS SOLVES
------------------------
-The previous service ran the consumer and the gRPC server on daemon threads and
-exposed ``GET /health`` returning ``{"status": "ok"}`` unconditionally. The
-endpoint could not observe either thread, so a dead consumer sat behind a green
-probe -- the container reported healthy and ingest had silently stopped. The
-workaround was ``os._exit(1)`` from a thread's exception handler, which killed
-the process hard enough to skip every ``finally`` block, including the one that
-flushed state on shutdown.
+"""
+Component health registry.
 
 Components register here and report their own state. Liveness and readiness are
 separated, because they answer different questions and conflating them causes
@@ -19,7 +10,7 @@ restart loops:
             orchestrator restarts a service whose only fault is a dependency
             being slow.
 
-  READINESS is this instance able to serve right now? A model still loading,
+  READINESS is this instance able to serve right now, A model still loading,
             or a dead consumer thread, fails this -- traffic is routed away
             without the container being killed.
 """
@@ -50,8 +41,6 @@ class ComponentStatus:
     name: str
     state: ComponentState = ComponentState.STARTING
     detail: str = ""
-    # Required components gate readiness. Optional ones (a metrics exporter,
-    # say) can be degraded without taking the instance out of rotation.
     required: bool = True
     updated_at: float = field(default_factory=time.monotonic)
 
@@ -80,7 +69,8 @@ class HealthRegistry:
         COMPONENT_UP.labels(component=name).set(1 if state is ComponentState.HEALTHY else 0)
 
     def begin_shutdown(self) -> None:
-        """Fail readiness immediately, keep liveness green.
+        """
+        Fail readiness immediately, keep liveness green.
 
         Called on SIGTERM so the load balancer drains this instance while
         in-flight requests finish, instead of receiving new work right up to

@@ -1,4 +1,5 @@
-"""Semantic response cache.
+"""
+Semantic response cache.
 
 Two questions asked differently but MEANING the same thing should not cost two
 full agent runs -- several tool calls, a large retrieval payload in context, and
@@ -123,6 +124,7 @@ class SemanticCache:
     async def invalidate_user(self, user_id: str) -> None:
         """Called after ingest. Bumping the generation retires every existing
         entry at once, without scanning or deleting keys."""
+        
         if not self._enabled:
             return
         try:
@@ -139,7 +141,7 @@ class SemanticCache:
         except Exception:
             log.warning("cache.memory_invalidate_failed", exc_info=True)
 
-    # -- lookup -----------------------------------------------------------
+    # --------------------------lookup---------------------------------
 
     async def lookup(
         self, *, message: str, user_id: str, doc_ids: list[str], has_history: bool
@@ -150,9 +152,6 @@ class SemanticCache:
 
         decision = classify_request(message, has_history=has_history)
         if decision is not CacheDecision.CACHEABLE:
-            # Greetings land here and are answered live every time, which is
-            # the entire point: "Hi" and "Hello there" must not replay one
-            # canned string.
             CACHE_EVENTS.labels(event="skip", reason=decision.value).inc()
             log.debug("cache.skipped", reason=decision.value)
             return None
@@ -211,7 +210,7 @@ class SemanticCache:
         )
         return best
 
-    # -- store ------------------------------------------------------------
+    # ------------------------------store------------------------------
 
     async def store(
         self,
@@ -232,9 +231,6 @@ class SemanticCache:
 
         decision = classify_response(answer=answer, tools_used=tools_used, timed_out=timed_out)
         if decision is not CacheDecision.CACHEABLE:
-            # Notably: a turn that saved a practice set is not stored. Replaying
-            # "I've saved these 5 questions" with nothing saved behind it is
-            # worse than re-running the turn.
             CACHE_EVENTS.labels(event="skip_store", reason=decision.value).inc()
             return False
 
@@ -260,9 +256,6 @@ class SemanticCache:
             await self._redis.hset(key, field, record)
             await self._redis.expire(key, self._ttl)
 
-            # Bounded per scope: entries carry a 1024-float embedding each, so
-            # an unbounded hash becomes both a memory problem and a slow linear
-            # scan on every lookup.
             if await self._redis.hlen(key) > self._max_entries:
                 await self._evict_oldest(key)
 
@@ -287,7 +280,8 @@ class SemanticCache:
             await self._redis.hdel(key, field)
 
     async def _embed(self, text: str) -> list[float] | None:
-        """Embed via embedding-service.
+        """
+        Embed via embedding-service.
 
         Uses the QUERY path so cache keys sit in the same space as retrieval
         queries, and so no second model is loaded in this process.

@@ -1,9 +1,5 @@
-"""The four memory types, as a domain model.
-
-The taxonomy is the standard cognitive one, mapped onto what a tutoring agent
-actually needs. What matters is that each type has a DIFFERENT lifetime, a
-DIFFERENT write path, and a DIFFERENT read path -- otherwise "four memory
-types" is one store with four labels on it.
+"""
+The four memory types, as a domain model.
 
     ┌──────────────┬─────────────┬──────────────────┬─────────────────────┐
     │ Type         │ Lifetime    │ Written by       │ Read by             │
@@ -45,10 +41,6 @@ class MemoryType(StrEnum):
     PROCEDURAL = "procedural"
 
 
-# Legacy namespace helpers retained for import compatibility. New durable
-# memory is stored through memory.repository, not LangGraph BaseStore.
-
-
 def semantic_ns(user_id: str) -> tuple[str, ...]:
     """Facts about this student. Namespaced per user."""
     return ("memories", user_id, MemoryType.SEMANTIC.value)
@@ -64,13 +56,7 @@ def procedural_ns(user_id: str) -> tuple[str, ...]:
     return ("memories", user_id, MemoryType.PROCEDURAL.value)
 
 
-# --- schemas ---------------------------------------------------------------
-#
-# Typed rather than free-text strings. The agent writes these through a tool,
-# and a schema is what lets the model be told precisely what a "fact" is versus
-# a "misconception" -- untyped memory degenerates into a pile of paraphrased
-# conversation, which then pollutes every subsequent recall.
-
+# ----------------------------schemas-----------------------------------
 
 class SemanticMemory(BaseModel):
     """A durable fact about the student or their material.
@@ -118,9 +104,10 @@ class EpisodicMemory(BaseModel):
 
 
 class ProceduralMemory(BaseModel):
-    """A learned rule about HOW to tutor this student.
+    """
+    A learned rule about HOW to tutor this student.
 
-    This is the memory type that actually changes the agent's behaviour: its
+    This is the memory type that actually changes the agent's behaviour, its
     contents are injected into the system prompt, so a rule here rewrites how
     every subsequent turn is handled. Versioned because that power cuts both
     ways -- a bad rule silently degrades every response until someone notices,
@@ -160,7 +147,8 @@ class RecalledContext(BaseModel):
         return not (self.semantic or self.episodic or self.procedural)
 
     def render(self) -> str:
-        """Render for injection into the system prompt.
+        """
+        Render for injection into the system prompt.
 
         Kept compact on purpose. Recall is injected on EVERY turn, so verbose
         formatting here is a tax paid on every model call for the whole session.

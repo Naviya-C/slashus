@@ -80,8 +80,6 @@ async def build_container(settings: Settings) -> Container:
         settings.database.url,
         pool_size=settings.database.pool_size,
         max_overflow=settings.database.max_overflow,
-        # Recycle before Neon's idle timeout, else the first query after a quiet
-        # period fails on a server-closed connection.
         pool_recycle=settings.database.pool_recycle_seconds,
         pool_pre_ping=True,
         echo=settings.database.echo,
@@ -129,8 +127,6 @@ async def build_container(settings: Settings) -> Container:
     if checkpointer is None:
         from langgraph.checkpoint.memory import MemorySaver
 
-        # Working memory becomes per-process: a follow-up landing on another
-        # replica finds no thread. Production config requires REDIS_URL.
         log.warning("checkpointer.in_memory", detail="working memory will not survive restart")
         checkpointer = MemorySaver()
 
@@ -197,8 +193,7 @@ async def probe(container: Container) -> None:
         "vector-search",
         ComponentState.HEALTHY if await container.vectors.healthy() else ComponentState.DEGRADED,
     )
-    # The LLM is not probed with a synthetic call: it costs money and quota on
-    # every health check, and a real outage shows in the request metrics anyway.
+
     health.set("llm", ComponentState.HEALTHY, container.settings.llm.model)
 
 

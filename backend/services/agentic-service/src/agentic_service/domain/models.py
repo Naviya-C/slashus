@@ -30,9 +30,6 @@ class SearchOutcome(BaseModel):
     total_user_chunks: int = 0
     filters_applied: list[str] = Field(default_factory=list)
     degraded: bool = False
-    # Distinguishes "the backend never answered" from "there are no results".
-    # Collapsing the two is how an outage becomes "your documents don't cover
-    # that" in the student's face.
     failed: bool = False
     error: str = ""
 

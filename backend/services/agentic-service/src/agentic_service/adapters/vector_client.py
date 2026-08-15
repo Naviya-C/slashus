@@ -1,20 +1,5 @@
-"""Async gRPC client onto embedding-service.
-
-WHAT CHANGED
-------------
-* ASYNC. v1 used the blocking ``grpc`` stub from a sync FastAPI endpoint, so
-  every search occupied a threadpool worker for its full 30-second timeout.
-* CIRCUIT BREAKER. v1 caught ``RpcError`` and returned an empty response, which
-  is right for one failure but wrong for a sustained outage: every request
-  still paid the full timeout before failing, so an embedding-service outage
-  became an agentic-service latency collapse. The breaker fails fast once a
-  failure threshold is crossed and probes for recovery.
-* THE EMPTY RESPONSE IS NOW DISTINGUISHABLE FROM "NO RESULTS". v1 returned the
-  same empty object for both, so the agent could not tell "your documents
-  contain nothing about this" from "the search backend is down" -- and told the
-  student the former in both cases.
-* CORRELATION PROPAGATION so a turn can be traced across both services.
-* TLS support; v1 was hardcoded to ``insecure_channel``.
+"""
+Async gRPC client onto embedding-service.
 """
 
 from __future__ import annotations
@@ -45,17 +30,10 @@ _MODES = {
     "sparse": search_pb2.SEARCH_MODE_SPARSE,
 }
 
-# Ownership keys are promoted to typed proto fields; everything else is a
-# content filter and travels in the map.
 OWNERSHIP_KEYS = frozenset({"user_id", "doc_id"})
 
 
 def as_values(value: object) -> list[str]:
-    """Normalise a filter value to a list of strings.
-
-    A bare string is a ONE-element list, not an iterable of characters. The
-    obvious loop over ``value`` sends ['අ', 'ත', 'ී', ...] and matches nothing.
-    """
     if value is None:
         return []
     if isinstance(value, list | tuple | set):
@@ -107,8 +85,6 @@ class CircuitBreaker:
 
 
 class GrpcVectorClient:
-    """Adapter for :class:`agentic_service.ports.VectorClient`."""
-
     def __init__(self, settings: VectorSettings) -> None:
         self._cfg = settings
         options = [
@@ -178,16 +154,12 @@ class GrpcVectorClient:
             code = exc.code().name if exc.code() else "UNKNOWN"
             VECTOR_ERRORS.labels(code=code).inc()
             log.error("vector.search_failed", code=code, detail=exc.details())
-            # `failed=True` so the agent can say "search is unavailable"
-            # instead of "your documents contain nothing about this".
             return SearchOutcome(failed=True, error=f"{code}: {exc.details()}")
 
         self._breaker.record_success()
 
         requested = {key for key in content if not key.startswith("_")}
         if ignored := requested - set(response.filters_applied):
-            # The server refused a key. Silence here lets the agent believe it
-            # narrowed a search it did not narrow.
             log.warning("vector.filters_ignored", keys=sorted(ignored))
 
         return SearchOutcome(
@@ -222,7 +194,8 @@ class GrpcVectorClient:
         limit: int = 0,
         correlation_id: str | None = None,
     ) -> TitleListing:
-        """Empty listing on failure rather than raising.
+        """
+        Empty listing on failure rather than raising.
 
         Title matching is an optimisation: without it retrieval falls back to
         searching the whole corpus, which is worse but works. A dead title scan
@@ -253,10 +226,11 @@ class GrpcVectorClient:
         )
 
     async def embed(self, texts: list[str], *, purpose: str = "document") -> list[list[float]]:
-        """Embed text for the long-term memory store.
+        """
+        Embed text for the long-term memory store.
 
         Routed through embedding-service so exactly one BGE-M3 exists in the
-        deployment; a second copy loaded here would double resident memory and
+        deployment a second copy loaded here would double resident memory and
         could drift to a different model version, silently making previously
         written memories unsearchable.
         """
@@ -284,13 +258,8 @@ class GrpcVectorClient:
         return [list(v.values) for v in response.dense]
 
     async def healthy(self) -> bool:
-        """Probes the standard gRPC health service.
-
-        v1 called a bespoke ``Health`` RPC on the search service. The standard
-        one is what orchestrators use, and it reports on the gRPC port
-        specifically -- embedding-service's HTTP health could pass while its
-        gRPC side was dead, which is what made chat hang with nothing in the
-        logs.
+        """
+        Probes the standard gRPC health service.
         """
         from grpc_health.v1 import health_pb2, health_pb2_grpc
 

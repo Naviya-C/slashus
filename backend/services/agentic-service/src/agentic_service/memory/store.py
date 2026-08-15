@@ -1,4 +1,5 @@
-"""Framework store used by LangGraph internals.
+"""
+Framework store used by LangGraph internals.
 
 Durable semantic, episodic and procedural memories live in PostgreSQL/pgvector
 through ``memory.repository``. This store intentionally has no vector index so
@@ -19,7 +20,8 @@ log = structlog.get_logger(__name__)
 async def build_store(
     *, redis_url: str | None, vectors: Any, dimensions: int
 ) -> tuple[BaseStore, Any]:
-    """Return (store, closer).
+    """
+    Return (store, closer).
 
     Redis-backed in any real deployment. The in-memory fallback is explicitly a
     local-development path: with more than one replica it means a student's
@@ -42,9 +44,5 @@ async def build_store(
         log.info("store.redis", dimensions=dimensions)
         return store, manager
     except Exception:
-        # Degrade rather than refuse to start: an agent with no long-term
-        # memory still tutors. Production config requires REDIS_URL, so this
-        # path means Redis is present but broken, and that should page someone
-        # rather than take chat offline.
         log.error("store.redis_failed_falling_back", exc_info=True)
         return InMemoryStore(), None

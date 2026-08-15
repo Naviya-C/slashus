@@ -1,9 +1,5 @@
-"""Structured logging.
-
-Plain ``logging.basicConfig`` produced free-text lines that no log aggregator
-could filter on. Every record is now a JSON object with stable keys, and a
-correlation id is bound to the context so one request's lines can be pulled out
-of an interleaved multi-threaded log.
+"""
+Structured logging.
 """
 
 from __future__ import annotations
@@ -47,9 +43,6 @@ def configure_logging(cfg: ObservabilitySettings, *, service: str, version: str)
         cache_logger_on_first_use=True,
     )
 
-    # Route stdlib logging (uvicorn, grpc, qdrant-client) through the same
-    # pipeline, so third-party lines are structured too instead of appearing
-    # as unparseable free text next to the JSON.
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(
         structlog.stdlib.ProcessorFormatter(processor=renderer, foreign_pre_chain=shared)

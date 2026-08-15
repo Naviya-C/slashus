@@ -1,4 +1,5 @@
-"""What may be cached, and what must always be answered live.
+"""
+What may be cached, and what must always be answered live.
 
 THE RULE
 --------
@@ -15,19 +16,6 @@ GREETINGS AND SMALL TALK. There is no correct answer to reuse -- the value is
 in the response being fresh. These also cost one cheap model call and no tool
 calls, so caching them saves almost nothing anyway.
 
-CONTEXT-DEPENDENT FOLLOW-UPS. "explain more", "තව විස්තර කරන්න", "what about
-the second one" mean nothing on their own. Their answer depends entirely on the
-preceding turns, so two identical follow-ups in different conversations need
-completely different answers. This is the case where a semantic cache is not
-merely useless but actively wrong.
-
-TURNS THAT WROTE MEMORY OR HAD SIDE EFFECTS. If the agent saved a practice set
-or recorded a fact, replaying the response detaches it from the side effect --
-the student sees "I've saved these 5 questions" with no saved questions behind
-it.
-
-PERSONAL / MEMORY-DEPENDENT QUESTIONS. "what am I studying", "what did I get
-wrong last time" resolve against memory that changes between turns.
 
 CACHED
 ------
@@ -42,9 +30,7 @@ from __future__ import annotations
 import re
 from enum import StrEnum
 
-# Greeting and closing forms, English and Sinhala. Matched as WHOLE messages:
-# "hi" is a greeting, "hi, can you explain photosynthesis" is a question that
-# happens to open politely.
+
 _GREETING_RE = re.compile(
     r"^\s*(?:"
     r"h(?:i|ey|ello|iya)|yo|sup|greetings|good\s+(?:morning|afternoon|evening|day)|"
@@ -56,7 +42,6 @@ _GREETING_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Markers that the message only makes sense relative to earlier turns.
 _FOLLOWUP_RE = re.compile(
     r"(?:"
     r"\b(?:explain|tell)\s+(?:me\s+)?more\b|\bmore\s+detail|\bgo\s+on\b|\bcontinue\b|"
@@ -68,7 +53,7 @@ _FOLLOWUP_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Questions whose answer depends on this student's memory, not their documents.
+
 _PERSONAL_RE = re.compile(
     r"(?:"
     r"\bwhat\s+(?:am|was)\s+i\b|\bwhat\s+did\s+i\b|\bmy\s+(?:progress|score|marks|results|goal)\b|"
@@ -78,7 +63,6 @@ _PERSONAL_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Tools whose effects cannot be replayed from a cached string.
 SIDE_EFFECT_TOOLS = frozenset(
     {
         "save_practice_questions",
@@ -115,19 +99,10 @@ def classify_request(message: str, *, has_history: bool = False) -> CacheDecisio
     if _PERSONAL_RE.search(text):
         return CacheDecision.PERSONAL
     if has_history and _FOLLOWUP_RE.search(text):
-        # Checked BEFORE the length rule: short follow-ups like "continue" are
-        # blocked either way, but the reason is what shows up in metrics and in
-        # a debugging session, and "followup" is the true one.
-        #
-        # Only a follow-up if there IS something to follow -- the same words
-        # opening a fresh session are a normal question.
         return CacheDecision.FOLLOWUP
     if has_history:
         return CacheDecision.HAS_HISTORY
     if len(text) < MIN_CACHEABLE_CHARS:
-        # Too short for similarity to be trustworthy: "the cycle?" and
-        # "the cell?" sit close in embedding space and are not the same
-        # question.
         return CacheDecision.TOO_SHORT
 
     return CacheDecision.CACHEABLE
@@ -136,10 +111,11 @@ def classify_request(message: str, *, has_history: bool = False) -> CacheDecisio
 def classify_response(
     *, answer: str, tools_used: list[str], timed_out: bool = False
 ) -> CacheDecision:
-    """Decide whether this turn's ANSWER may be STORED.
+    """
+    Decide whether this turn's ANSWER may be STORED.
 
     Separate from the request check because some disqualifiers are only visible
-    after the fact -- which tools ran, whether an answer was produced at all.
+    after the fact which tools ran, whether an answer was produced at all.
     """
     if timed_out or not answer.strip():
         return CacheDecision.EMPTY_ANSWER

@@ -1,10 +1,5 @@
-"""SQLAlchemy ORM models -- the SINGLE definition.
-
-v1 had two: ``src/database/schema.py`` (215 lines) and ``migrations/schema.py``
-(327 lines), defining the same five tables. Two definitions of one schema drift,
-and when they do, Alembic autogenerate produces a migration against the wrong
-picture of the database. Alembic's ``env.py`` now imports THIS module, so there
-is exactly one source of truth.
+"""
+SQLAlchemy ORM models
 """
 
 from __future__ import annotations
@@ -31,13 +26,6 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 def utcnow() -> datetime:
-    """Timezone-aware UTC.
-
-    v1 used ``datetime.now().astimezone()``, which stamps the SERVER's local
-    zone. Rows written by containers in different zones then sort incorrectly
-    against each other -- and keyset pagination is ordered on exactly these
-    columns, so the bug shows up as messages appearing out of order.
-    """
     return datetime.now(UTC)
 
 
@@ -69,9 +57,6 @@ class ChatSession(TimestampMixin, Base):
     )
 
     __table_args__ = (
-        # Composite, in the exact order the sidebar query uses. v1 had no index
-        # here at all, so listing sessions was a full scan filtered by user_id
-        # and sorted in memory.
         Index("ix_sessions_user_recent", "user_id", "last_message_at"),
     )
 
@@ -85,9 +70,6 @@ class ChatMessage(TimestampMixin, Base):
     session_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False
     )
-    # Denormalised so every query can filter on ownership without a join.
-    # Session ids appear in URLs; a query scoped only by session_id would let
-    # any authenticated caller read another user's conversation.
     user_id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
@@ -179,9 +161,6 @@ class PracticeAnswer(TimestampMixin, Base):
     question: Mapped[PracticeQuestion] = relationship(back_populates="answer")
 
     __table_args__ = (
-        # One answer per question. v1 enforced this only in application code
-        # (SELECT then INSERT), which two concurrent submissions could race
-        # past, leaving two answer rows and a non-deterministic total.
         UniqueConstraint("question_id", name="uq_answer_per_question"),
         Index("ix_answers_user", "user_id"),
     )

@@ -11,8 +11,7 @@ TOOL_LATENCY = Histogram(
     ["tool"],
     buckets=(0.05, 0.1, 0.5, 1, 2, 5, 10, 30),
 )
-# The defining metric of a real agent loop: how many tool calls the MODEL chose
-# to make. In a hardcoded pipeline this is a constant; here it is a distribution.
+
 LOOP_ITERATIONS = Histogram(
     "agentic_loop_iterations", "Model calls per turn", buckets=(1, 2, 3, 4, 5, 6, 8, 12, 20)
 )
@@ -39,7 +38,7 @@ CONSOLIDATIONS = Counter("agentic_consolidations_total", "Background consolidati
 VECTOR_ERRORS = Counter("agentic_vector_errors_total", "gRPC failures", ["code"])
 COMPONENT_UP = Gauge("agentic_component_up", "1 when a dependency is healthy", ["component"])
 
-# -- semantic response cache ------------------------------------------------
+# -----------------------semantic response cache--------------------------
 
 CACHE_EVENTS = Counter(
     "agentic_cache_events_total",
