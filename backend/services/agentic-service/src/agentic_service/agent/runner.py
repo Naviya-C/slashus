@@ -74,11 +74,15 @@ class TurnRunner:
         self._cfg = settings
         self._cache = cache
         self._consolidate = consolidation_enabled
-        # Held so shutdown can await them; a fire-and-forget task that is never
-        # referenced can be garbage-collected mid-flight.
+        # This background use for track the tasks and remove completed task wait for remaining tasks during shutdown.
         self._background: set[asyncio.Task] = set()
+        
 
     def _config(self, *, user_id: UUID, session_id: str, doc_ids: list[str]) -> dict:
+        """
+        - Configurable is the runtime information passed into the LangGraph agent, checkpointer and tools
+        """
+        
         return {
             "configurable": {
                 "thread_id": f"{user_id}:{session_id}",
@@ -183,7 +187,9 @@ class TurnRunner:
             tools=result.tool_calls,
             iterations=result.iterations,
             tokens=result.tokens,
-        )
+        )                # Identity travels in config, never as a tool argument, so a
+                # prompt injection inside a retrieved chunk has no slot in
+                # which to name a different user.
 
         if self._cache is not None:
             await self._cache.store(
@@ -215,7 +221,8 @@ class TurnRunner:
         session_id: str,
         doc_ids: list[str] | None = None,
     ):
-        """Stream the turn as it happens.
+        """
+        Stream the turn as it happens.
 
         A real agent loop can spend twenty seconds on tool calls before the
         first token of prose. Emitting tool events as they occur is the

@@ -36,7 +36,7 @@ from agentic_service.observability.tracing import configure_tracing
 from agentic_service.prompts.pool import get_prompt_pool
 
 log = structlog.get_logger(__name__)
-
+ 
 
 @dataclass
 class Container:

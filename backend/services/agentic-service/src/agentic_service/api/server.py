@@ -3,7 +3,6 @@ from __future__ import annotations
 import hmac
 import time
 import uuid
-from collections import defaultdict, deque
 from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
@@ -20,7 +19,6 @@ from agentic_service.observability.health import HealthRegistry
 
 log = structlog.get_logger(__name__)
 
-
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000)
     session_id: UUID | None = None
@@ -32,23 +30,6 @@ class MarkRequest(BaseModel):
     question_id: UUID
     selected_index: int | None = None
     answer_text: str | None = Field(default=None, max_length=20_000)
-
-
-class SlidingWindowLimiter:
-    def __init__(self, limit: int, window_seconds: float = 60.0) -> None:
-        self._limit = limit
-        self._window = window_seconds
-        self._hits: dict[str, deque[float]] = defaultdict(deque)
-
-    def allow(self, key: str) -> bool:
-        now = time.monotonic()
-        hits = self._hits[key]
-        while hits and now - hits[0] > self._window:
-            hits.popleft()
-        if len(hits) >= self._limit:
-            return False
-        hits.append(now)
-        return True
 
 
 def _cursor(value: str | None) -> datetime | None:
@@ -68,6 +49,7 @@ def create_app(*, settings: Settings, container: Any, health: HealthRegistry) ->
         docs_url=None if settings.environment == "production" else "/docs",
         redoc_url=None,
     )
+    
     if settings.security.cors_allow_origins:
         app.add_middleware(
             CORSMiddleware,
@@ -77,47 +59,45 @@ def create_app(*, settings: Settings, container: Any, health: HealthRegistry) ->
             allow_headers=["*"],
         )
 
-    limiter = SlidingWindowLimiter(settings.security.rate_limit_per_minute)
 
     @app.middleware("http")
     async def correlate(request: Request, call_next: Any) -> Response:
         correlation_id = request.headers.get("X-Correlation-Id") or str(uuid.uuid4())
         structlog.contextvars.bind_contextvars(correlation_id=correlation_id, path=request.url.path)
         started = time.perf_counter()
+        
         try:
             response = await call_next(request)
+            
+            response.headers["X-Correlation-Id"] = correlation_id
+            log.info(
+                "http.request",
+                status=response.status_code,
+                ms=round((time.perf_counter() - started) * 1000, 1),
+            )
+            return response
         finally:
-            structlog.contextvars.unbind_contextvars("correlation_id", "path")
-        response.headers["X-Correlation-Id"] = correlation_id
-        log.info(
-            "http.request",
-            status=response.status_code,
-            ms=round((time.perf_counter() - started) * 1000, 1),
-        )
-        return response
+                structlog.contextvars.unbind_contextvars("correlation_id", "path")
 
     async def current_user(
         x_user_id: Annotated[UUID, Header(alias="X-User-Id")],
         x_gateway_secret: Annotated[str | None, Header(alias="X-Gateway-Secret")] = None,
     ) -> UUID:
         expected = settings.security.gateway_shared_secret
+        
         if expected is not None and not hmac.compare_digest(
             x_gateway_secret or "", expected.get_secret_value()
         ):
             log.warning("api.gateway_secret_mismatch")
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid credentials")
+        
         return x_user_id
-
-    async def rate_limited(user_id: UUID = Depends(current_user)) -> UUID:
-        if not limiter.allow(str(user_id)):
-            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "too many requests")
-        return user_id
 
 
     @app.post("/api/v1/chat", tags=["chat"])
     async def chat(
         body: ChatRequest,
-        user_id: UUID = Depends(rate_limited),
+        user_id: UUID = Depends(current_user)
     ) -> Any:
         session = await container.repository.get_or_create_session(
             user_id=user_id,
@@ -125,6 +105,7 @@ def create_app(*, settings: Settings, container: Any, health: HealthRegistry) ->
             first_message=body.message,
             doc_ids=body.doc_ids,
         )
+        
         session_id = session["id"]
         doc_ids = list(session["doc_ids"])
 
@@ -199,7 +180,7 @@ def create_app(*, settings: Settings, container: Any, health: HealthRegistry) ->
     @app.post("/api/v1/mark", tags=["practice"])
     async def mark(
         body: MarkRequest,
-        user_id: UUID = Depends(rate_limited),
+        user_id: UUID = Depends(current_user)
     ) -> dict[str, Any]:
         try:
             return await container.evaluator.evaluate_and_save(
