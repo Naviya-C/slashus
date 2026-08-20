@@ -29,7 +29,7 @@ function FileDropzone({ onUploaded }: Props) {
         try {
             const form = new FormData();
             form.append("file", file);
-            const res = await apiFetch("/api/v1/uploads", {
+            const res = await apiFetch("/uploads", {
                 method: "POST",
                 body: form,
             });
