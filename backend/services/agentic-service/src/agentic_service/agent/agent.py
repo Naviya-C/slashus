@@ -76,18 +76,34 @@ class MemoryRecallMiddleware(AgentMiddleware):
         return str((config.get("configurable") or {}).get("user_id", ""))
 
     async def abefore_model(self, state: TutorState, runtime: Any) -> dict[str, Any] | None:
+        # updates the agent state before each model call
         humans = [message for message in state["messages"] if message.type == "human"]
         latest = humans[-1] if humans else None
         query = str(latest.content) if latest is not None else ""
+        """
+        turn_id:
+            - Number of human messages
+            - Latest message ID, if available.
+        """
         turn_id = f"{len(humans)}:{getattr(latest, 'id', '') or query[:80]}"
         if state.get("recalled_turn_id") == turn_id:
+            """
+            This prevents unnecessary Qdrant/PostgreSQL memory searches, reducing latency and cost.
+            """
             return None
 
         started = time.perf_counter()
-        recalled = await self._memory.recall(self._user_id(runtime), query)
+        recalled = await self._memory.recall(self._user_id(runtime), query) # The MemoryManager searches for relevant
+        """
+        This `MEMORY_RECALL` helps to find:
+            - Performance bottleneck
+            - Average recall latency
+            - Slow memory searches
+        """
+        
         MEMORY_RECALL.observe(time.perf_counter() - started)
 
-        rendered = recalled.render()
+        rendered = recalled.render() # The raw memory lists are converted into prompt-ready text.
         log.info(
             "agent.memory_recalled",
             semantic=len(recalled.semantic),
@@ -98,7 +114,10 @@ class MemoryRecallMiddleware(AgentMiddleware):
         return {"recalled": rendered, "recalled_turn_id": turn_id}
 
     async def awrap_model_call(self, request: ModelRequest, handler: Any) -> Any:
-        """Fold recalled memory into the system prompt for this call."""
+        """
+        Fold recalled memory into the system prompt for this call.
+        This wraps the actual Qwen API call
+        """
         recalled = ""
         state = getattr(request, "state", None)
         if isinstance(state, dict):
@@ -118,8 +137,18 @@ def build_agent(
     settings: AgentSettings,
     base_prompt: str,
     summarization_model: Any = None,
-) -> Any:
-    """Compile the agent with memory and its termination guarantees."""
+) -> Any: 
+    """
+    Compile the agent with memory and its termination guarantees.
+    This function builds and returns the complete Slashus ReAct agent by connecting:
+        Qwen model
+        Slashus tools
+        Memory middleware
+        Conversation summarization
+        Tool-call limits
+        Checkpoint persistence
+        Long-term store
+    """
     middleware: list[AgentMiddleware] = [MemoryRecallMiddleware(memory, base_prompt)]
 
     if settings.summarization_enabled:

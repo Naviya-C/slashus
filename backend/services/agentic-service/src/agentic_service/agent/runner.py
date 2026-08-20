@@ -80,7 +80,12 @@ class TurnRunner:
 
     def _config(self, *, user_id: UUID, session_id: str, doc_ids: list[str]) -> dict:
         """
-        - Configurable is the runtime information passed into the LangGraph agent, checkpointer and tools
+        This configuration provides conversation 
+            - continuity
+            - tenant isolation
+            - document restrictions
+            - per-turn tracking
+            - protection against endless agent loops
         """
         
         return {
@@ -104,17 +109,33 @@ class TurnRunner:
         session_id: str,
         doc_ids: list[str] | None = None,
     ) -> TurnResult:
+        """
+        Non streaming - This function use for non-streaming means it waits for entire agent turn and return one `TurnResult`.
+        """
+        
         docs = doc_ids or []
         config = self._config(user_id=user_id, session_id=session_id, doc_ids=docs)
         started = time.perf_counter()
 
-        # Whether this thread already has turns decides how an ambiguous
-        # message is read: "explain more" opening a fresh session is a normal
-        # question, but mid-conversation it is a follow-up whose answer depends
-        # entirely on what came before -- never cacheable.
-        has_history = await self._has_history(config)
+        """
+        New session:
+            "What is photosynthesis?"
+                -> potentially cacheable
+
+        Existing conversation:
+            "Explain that more"
+                -> meaning depends on previous messages
+                -> should not reuse a general cached answer
+        """
+        has_history = await self._has_history(config) # Check langraph checkpoints with user_id + session_id
+
 
         if self._cache is not None:
+            """
+            Search the semantic cache
+            If it has hit, then LLM and tools are not called
+            """
+            
             hit = await self._cache.lookup(
                 message=message,
                 user_id=str(user_id),
@@ -132,8 +153,21 @@ class TurnRunner:
                 )
 
         try:
+            # Config contain thread_id langGraph can load the previous conversation state from the checkpointer.
+            """
+            Load checkpoint
+                -> add new HumanMessage
+                -> LLM decides what to do
+                -> call tools if selected
+                -> return tool results to LLM
+                -> continue until final answer
+                -> save updated checkpoint
+            """    
             state = await asyncio.wait_for(
-                self._agent.ainvoke({"messages": [HumanMessage(content=message)]}, config),
+                self._agent.ainvoke(
+                    {"messages": [HumanMessage(content=message)]}, 
+                    config
+                ),
                 timeout=self._cfg.turn_timeout_seconds,
             )
         except TimeoutError:
@@ -232,14 +266,24 @@ class TurnRunner:
         config = self._config(user_id=user_id, session_id=session_id, doc_ids=docs)
         started = time.perf_counter()
         has_history = await self._has_history(config)
-        yield {"type": "turn_started", "session_id": session_id}
+        
+        # this tells to api the stream is start and the session id where it show.
+        yield {
+            "type": "turn_started", 
+            "session_id": session_id,
+        }
 
         if self._cache is not None:
             hit = await self._cache.lookup(
                 message=message, user_id=str(user_id), doc_ids=docs, has_history=has_history
             )
             if hit is not None:
-                yield {"type": "token", "text": hit.answer}
+                # If the semantic cache contains an answer.
+                # No agent call. turn_started -> turn_completed
+                yield {
+                    "type": "token", 
+                    "text": hit.answer
+                }
                 yield {
                     "type": "turn_completed",
                     "session_id": session_id,
@@ -252,6 +296,7 @@ class TurnRunner:
 
         try:
             async with asyncio.timeout(self._cfg.turn_timeout_seconds):
+                #Unlike ainvoke, astream provides informations while the agent is executing.
                 async for mode, chunk in self._agent.astream(
                     {"messages": [HumanMessage(content=message)]},
                     config,
@@ -296,7 +341,7 @@ class TurnRunner:
             "citations": result.citations,
         }
 
-    # -- helpers ----------------------------------------------------------
+    # -------------------------helpers---------------------------------
 
     @staticmethod
     def _summarise(state: dict) -> TurnResult:
