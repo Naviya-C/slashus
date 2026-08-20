@@ -1,15 +1,5 @@
-"""The agent's tools.
-
-These are real ``langchain_core`` tools with pydantic argument schemas, bound
-to the model via native function calling. The model chooses which to call, with
-what arguments, in what order, and when to stop.
-
-That is the substantive difference from the previous build. There, a
-``ToolRegistry`` held tool descriptions and argument specs, and a
-``catalogue()`` method existed to render them into a prompt -- but it was never
-called, no prompt ever listed a tool, and every invocation was a hardcoded
-string literal in a fixed graph. The model filled in parameters for a path that
-code had already chosen.
+"""
+The agent's tools.
 
 SECURITY: identity is never a tool argument
 -------------------------------------------
@@ -146,10 +136,6 @@ def build_tools(vectors: Any, memory_manager: Any) -> list:
         )
         TOOL_CALLS.labels(tool="search_documents", outcome="ok").inc()
 
-        # Every branch returns a DISTINCT, actionable string. A tool that
-        # answers "no results" identically whether the corpus is empty, the
-        # filter was wrong, or the backend is down gives the model no basis for
-        # choosing a different action -- so it retries the same call.
         if outcome.failed:
             return json.dumps(
                 {

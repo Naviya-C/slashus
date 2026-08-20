@@ -1,105 +1,184 @@
-# agentic-service v4
+# Slashus Agentic Service: Archtecture, Data Flow, and Implementaion Guid
 
-Slashus is a model-controlled ReAct tutoring agent. `langchain.agents.create_agent`
-binds native tools to the model; Python enforces tenancy, limits, persistence,
-grounding metadata, and side effects without prescribing a fixed route.
+The service is a real model-controlled ReAct agent. It is not a fixed Python router disguised as an agent. langchain.agents.create_agent binds native tools to the LLM, and the LLM decides whether to answer, call a tool, repeat retrieval with new arguments, write memory, create a quiz, or stop.
 
-The model may answer directly, list indexed lessons, perform one or more hybrid
-searches, reformulate a Sinhala/English/Singlish query, write memory, generate a
-quiz, or evaluate a saved answer. Tool count, recursion depth, and wall-clock
-duration remain bounded.
+The architecture:
+  - FastAPI provides the HTTP boundary.
+  - LangChain/LangGraph provides the agent loop and checkpointed conversation state.
+  - Qwen is accessed through an OpenAI-compatible API.
+  - PostgreSQL stores sessions, visible chat history, quizzes, answers, and long-term memories.
+  - pgvector recalls semantic and episodic memories.
+  - Redis stores LangGraph checkpoints and the semantic response cache.
+  - The embedding service owns BGE-M3 and Qdrant access behind gRPC.
+  - Python not the LLM controls identity, tenancy, limits, persistence, and citation validation.
 
-## Memory
 
-| Type | Storage | Behavior |
-|---|---|---|
-| Working | Redis LangGraph checkpointer | Thread history, summarized before the context limit |
-| Semantic | PostgreSQL + pgvector | Student goals, preferences, facts, misconceptions |
-| Episodic | PostgreSQL + pgvector | Completed tutoring situations with outcomes |
-| Procedural | PostgreSQL + pgvector | Versioned active tutoring rules injected into future prompts |
+## System boundary
+Client["React client"] --> Gateway["API Gateway"]
+Gateway --> API["FastAPI agentic service"]
+API --> Runner["TurnRunner"]
+Runner --> Cache["Redis semantic cache"]
+Runner --> Agent["LangGraph ReAct agent"]
+Agent --> LLM["Qwen via Dashscope"]
+Agent --> Tools["Native agent tools"]
+Tools --> GRPC["gRPC embedding service"]
+GRPC --> Qdrant["Qdrant + BGE-M3"]
+Tools --> Postgres["PostgreSQL + pgvector"]
+Agent --> Checkpoint["Redis checkpointer"]
+API --> Postgres
 
-Recall runs exactly once per new user turn, including later turns in the same
-thread. Semantic cache keys include user, document scope, document generation,
-and memory generation. Any conversation with prior history is answered live.
+```mermaid
+graph TD
+    A[runtime.py Build_Service]
+    A --> B[server.py Handle_Request]
+    B --> E[Front End]
+    B --> C[runner.py Execute_Turn]
+    C --> D[LangGraph Agent and Tools]
+    D --> C
+    C --> B
+    E --> B
+```
+```
+runtime.py:
+It is the composition root and lifecycle manager.
+Its job is to construct everything once when the service starts
+Settings
+Database engine
+Repository
+Redis
+Vector client
+Memory store
+LLM
+Cache
+Evaluator
+Agent tools
+LangGraph agent
+TurnRunner
+FastAPI application
 
-## API
+Without runtime.py, individual API endpoints might need to create their own database, Redis, LLM and agent clients. That would create duplicated connections and poorly organized code.
 
-- `POST /api/v1/chat` — normal JSON or SSE (`stream: true`)
-- `POST /api/v1/mark` — deterministic objective marking or rubric-based written marking
-- `GET /api/v1/practice/{set_id}`
-- `GET /api/v1/sessions`
-- `GET /api/v1/sessions/{session_id}`
-- `GET /api/v1/memory`
-- `DELETE /api/v1/memory/{semantic|episodic|procedural}`
+Startup flow:
+Application starts
+→ load environment settings
+→ configure logs and tracing
+→ connect database
+→ connect Redis
+→ connect vector service
+→ build memory system
+→ build LLM
+→ build tools
+→ build LangGraph agent
+→ build TurnRunner
+→ check dependencies
+→ create FastAPI app
+→ start Uvicorn
 
-SSE emits `turn_started`, `tool_started`, `tool_completed`, `token`,
-`turn_completed`, and structured `error` events. Both chat modes persist the
-same logical result and schedule background consolidation.
+Shutdown flow:
+Mark service as shutting down
+→ stop accepting new traffic
+→ wait for memory consolidation
+→ close vector connection
+→ close memory store
+→ close Redis
+→ close database pool
+→ stop application
 
-## Fresh local setup
+Scalability purpose
 
-Python 3.12 and Docker Compose v2 are required. Start infrastructure using the
-compose file included in this service; its PostgreSQL image contains pgvector.
-
-```bash
-docker compose -f docker-compose.infra.yml up -d
-
-python3.12 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-pip install -e ".[dev]"
-cp .env.example .env
+It builds shared clients once per service instance:
+One database pool per replica
+One Redis pool per replica
+One gRPC client per replica
+One agent graph per replica
 ```
 
-Set at least:
+```
+api/server.py
+It understands:
+URLs
+Request bodies
+Headers
+Authentication
+HTTP errors
+JSON responses
+SSE streaming
+Health endpoints
+Prometheus endpoint
 
-```dotenv
-DATABASE_URL=postgresql+asyncpg://slashus:slashus@localhost:5432/slashus
-REDIS_URL=redis://localhost:6379/0
-LLM_API_KEY=...
-EMBEDDING_GRPC_URL=localhost:50051
-EMBEDDING_SERVICE_TOKEN=the-same-value-as-GRPC_SERVICE_TOKEN
-SECURITY_GATEWAY_SHARED_SECRET=local-gateway-secret
+The frontend sends:
+{
+  "message": "Explain photosynthesis",
+  "session_id": null,
+  "doc_ids": ["document-uuid"],
+  "stream": true
+}
+
+The gateway validates the user’s JWT and forwards:
+X-User-Id: user-uuid
+X-Gateway-Secret: internal-secret
+X-Correlation-Id: request-uuid
+
+Request validation
+Authentication
+Session management
+Calling the runner
+Saving chat history
+Endpoints
+Recall memory
+Delete memory
+Health
 ```
 
-Run migrations after PostgreSQL is healthy:
+```
+agent/runner.py
+controls one complete agent turn.
 
-```bash
-alembic upgrade head
-python -m agentic_service check
+It handles:
+
+Per-turn configuration
+Conversation checkpoint identification
+Semantic cache lookup
+Timeout protection
+Agent invocation
+Streaming agent events
+Tool event reporting
+Token and iteration counting
+Citation validation
+Cache storage
+Long-term memory consolidation
 ```
 
-Start embedding-service first, then:
-
-```bash
-python -m agentic_service serve
 ```
+agent.py
+The most important line is:
 
-## Verification
+agent = create_agent(...)
+That creates the repeating agent loop:
+Call LLM
+→ LLM may request a tool
+→ execute tool
+→ return tool result to LLM
+→ LLM decides again
+→ eventually return a final answer
 
-```bash
-curl http://localhost:8084/health/ready
+This shows reACT loop
+Reason → Act → Observe → Reason again
+e.g:- 
+  Reason: I need the student’s textbook information.
+  Act: Call search_documents.
+  Observe: Read the returned passages.
+  Reason: The passages are sufficient.
+  Answer: Generate the grounded explanation.
 
-curl -X POST http://localhost:8084/api/v1/chat \
-  -H 'Content-Type: application/json' \
-  -H 'X-User-Id: 11111111-1111-1111-1111-111111111111' \
-  -H 'X-Gateway-Secret: local-gateway-secret' \
-  -d '{"message":"Explain the water cycle","doc_ids":[]}'
+slashus contains:
+This description contains three separate concepts:
 
-curl -N -X POST http://localhost:8084/api/v1/chat \
-  -H 'Content-Type: application/json' \
-  -H 'X-User-Id: 11111111-1111-1111-1111-111111111111' \
-  -H 'X-Gateway-Secret: local-gateway-secret' \
-  -d '{"message":"Create two MCQs","stream":true}'
+ReAct agent
+Memory-augmented
+Native tool calling
 
-curl -X POST http://localhost:8084/api/v1/mark \
-  -H 'Content-Type: application/json' \
-  -H 'X-User-Id: 11111111-1111-1111-1111-111111111111' \
-  -H 'X-Gateway-Secret: local-gateway-secret' \
-  -d '{"question_id":"REPLACE_WITH_QUESTION_UUID","selected_index":1}'
+custom memory middleware. Its job is:
 
-pytest
+Before Qwen is called, search semantic, episodic and procedural memory for the current user, store the recalled memories in agent state, and inject them into Qwen’s system prompt.
 ```
-
-Stable citations use `[C-XXXXXXXXXX]`. The API returns structured citation
-metadata only for identifiers that correspond to chunks retrieved in that turn.
