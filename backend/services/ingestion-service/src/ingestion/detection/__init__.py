@@ -1,1 +1,0 @@
-"""Page-type detection."""
