@@ -156,8 +156,9 @@ services:
       SERVICE_HOST: 0.0.0.0
       SERVICE_PORT: "8003"
 
-      STORAGE_BACKEND: local
-      LOCAL_STORAGE_ROOT: /tmp/slashus-storage
+      STORAGE_BACKEND: gcs
+      SOURCE_BUCKET: slashus-upload-service-pdf
+      ASSET_BUCKET: slashus-textbook-images
 
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       KAFKA_UPLOAD_TOPIC: documents.uploaded
