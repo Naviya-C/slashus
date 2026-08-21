@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,11 @@ from ingestion_service.domain import Asset, BlockType, DocumentUnit, ExtractedBl
 
 from .ocr import OCREngine
 from .piliwela_adapter import PiliwelaConverter
+
+
+@dataclass(frozen=True)
+class DocumentStyleProfile:
+    body_size: float
 
 
 class PDFReader:
@@ -34,11 +40,14 @@ class PDFReader:
         with pymupdf.open(path) as document:
             if document.page_count > self._cfg.max_document_units:
                 raise ValueError(f"document has {document.page_count} pages; limit exceeded")
+            profile = self._style_profile(document)
             section_stack: list[str] = []
             for page_index in range(document.page_count):
                 page = document.load_page(page_index)
                 table_blocks, table_boxes = self._table_blocks(page, section_stack)
-                blocks, section_stack = self._text_blocks(page, section_stack, table_boxes)
+                blocks, section_stack = self._text_blocks(
+                    page, section_stack, table_boxes, profile
+                )
                 if sum(len(block.text.strip()) for block in blocks) < self._cfg.ocr_min_text_characters:
                     blocks = self._ocr_blocks(page, section_stack) or blocks
                 assets = self._images(page)
@@ -56,10 +65,10 @@ class PDFReader:
         page: pymupdf.Page,
         section_stack: list[str],
         excluded_boxes: list[tuple[float, float, float, float]],
+        profile: DocumentStyleProfile,
     ) -> tuple[list[ExtractedBlock], list[str]]:
         raw = page.get_text("dict", sort=True)
         spans: list[dict[str, Any]] = []
-        sizes: list[float] = []
         for block in raw.get("blocks", []):
             if block.get("type") != 0:
                 continue
@@ -76,7 +85,6 @@ class PDFReader:
                     size = float(span.get("size") or 0)
                     if text.strip():
                         line_sizes.append(size)
-                        sizes.append(size)
                     flags |= int(span.get("flags") or 0)
                 text = "".join(line_parts).strip()
                 if text and not _center_in_any(bbox, excluded_boxes):
@@ -91,24 +99,37 @@ class PDFReader:
 
         if not spans:
             return [], section_stack
-        body_size = sorted(sizes)[len(sizes) // 2] if sizes else 0
         result: list[ExtractedBlock] = []
         current_section = list(section_stack)
         for item in spans:
             text = item["text"]
             is_bold = bool(item["flags"] & 16)
-            is_heading = (
-                len(text) <= 180
-                and (item["size"] >= body_size * 1.22 or (is_bold and item["size"] >= body_size))
+            level = _heading_level(
+                text=text,
+                size=item["size"],
+                bold=is_bold,
+                body_size=profile.body_size,
+                max_characters=self._cfg.heading_max_characters,
+                h1_ratio=self._cfg.heading_h1_ratio,
+                h2_ratio=self._cfg.heading_h2_ratio,
+                h3_ratio=self._cfg.heading_h3_ratio,
             )
-            if is_heading:
-                current_section = [text]
+            if level is not None:
+                # Never create a hierarchy with missing parents. A document that
+                # starts with an H2-sized line treats it as its current top level.
+                level = min(level, len(current_section) + 1)
+                current_section = [*current_section[: level - 1], text]
                 result.append(
                     ExtractedBlock(
                         block_type=BlockType.HEADING,
                         text=text,
                         section_path=list(current_section),
                         bbox=item["bbox"],
+                        metadata={
+                            "heading_level": level,
+                            "font_size": item["size"],
+                            "body_font_size": profile.body_size,
+                        },
                     )
                 )
             else:
@@ -121,6 +142,26 @@ class PDFReader:
                     )
                 )
         return result, current_section
+
+    @staticmethod
+    def _style_profile(document: pymupdf.Document) -> DocumentStyleProfile:
+        """Find the document body font using character-weighted frequency."""
+        weights: dict[float, int] = {}
+        for page_index in range(document.page_count):
+            page = document.load_page(page_index)
+            raw = page.get_text("dict", sort=False)
+            for block in raw.get("blocks", []):
+                if block.get("type") != 0:
+                    continue
+                for line in block.get("lines", []):
+                    for span in line.get("spans", []):
+                        text = str(span.get("text") or "").strip()
+                        size = round(float(span.get("size") or 0), 1)
+                        if text and size > 0:
+                            weights[size] = weights.get(size, 0) + len(text)
+            page = None
+        body_size = max(weights, key=weights.get) if weights else 10.0
+        return DocumentStyleProfile(body_size=body_size)
 
     def _ocr_blocks(
         self, page: pymupdf.Page, section_stack: list[str]
@@ -248,3 +289,34 @@ def _center_in_any(
         left <= center_x <= right and top <= center_y <= bottom
         for left, top, right, bottom in boxes
     )
+
+
+def _heading_level(
+    *,
+    text: str,
+    size: float,
+    bold: bool,
+    body_size: float,
+    max_characters: int,
+    h1_ratio: float,
+    h2_ratio: float,
+    h3_ratio: float,
+) -> int | None:
+    normalized = " ".join(text.split())
+    if not normalized or len(normalized) > max_characters:
+        return None
+    if len(normalized.split()) > 24:
+        return None
+    if normalized.isdigit():
+        return None
+    # Ordinary prose ending in sentence punctuation should not become a title.
+    if normalized.endswith((".", "?", "!", "。", "？", "！")):
+        return None
+    ratio = size / max(body_size, 0.1)
+    if ratio >= h1_ratio:
+        return 1
+    if ratio >= h2_ratio:
+        return 2
+    if ratio >= h3_ratio and bold:
+        return 3
+    return None
