@@ -61,6 +61,12 @@ class BlockChunker:
             text = block.text.strip()
             if not text:
                 continue
+            if buffer and block.section_path != buffer[-1].section_path:
+                # Context overlap must never pull text from the previous section
+                # into a newly detected title/subtitle hierarchy.
+                flush()
+                buffer = []
+                buffer_tokens = 0
             if block.block_type in {BlockType.TABLE, BlockType.IMAGE}:
                 flush()
                 for piece in self._split(text):
