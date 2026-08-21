@@ -10,6 +10,7 @@ from .models import (
     ImageEnrichmentRequested,
     JobState,
     JobStatus,
+    stable_chunk_id,
 )
 
 __all__ = [
@@ -24,5 +25,5 @@ __all__ = [
     "ImageEnrichmentRequested",
     "JobState",
     "JobStatus",
+    "stable_chunk_id",
 ]
-
