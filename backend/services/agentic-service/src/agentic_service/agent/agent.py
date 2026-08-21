@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import time
 from typing import Any
+from uuid import UUID
+from openai import BadRequestError
 
 import structlog
 from langchain.agents import create_agent
@@ -67,13 +69,28 @@ class MemoryRecallMiddleware(AgentMiddleware):
         self._base_prompt = base_prompt
 
     @staticmethod
-    def _user_id(runtime: Any) -> str:
-        """Identity from the run context, never from the model."""
+    def _user_id(runtime: Any) -> str | None:
         context = getattr(runtime, "context", None)
-        if isinstance(context, dict) and context.get("user_id"):
-            return str(context["user_id"])
-        config = getattr(runtime, "config", None) or {}
-        return str((config.get("configurable") or {}).get("user_id", ""))
+
+        if isinstance(context, dict):
+            raw_user_id = context.get("user_id")
+        else:
+            config = getattr(runtime, "config", None) or {}
+            raw_user_id = (
+                config.get("configurable") or {}
+            ).get("user_id")
+
+        if not raw_user_id:
+            return None
+
+        try:
+            return str(UUID(str(raw_user_id)))
+        except ValueError:
+            log.warning(
+                "agent.invalid_user_id",
+                user_id=str(raw_user_id),
+            )
+            return None
 
     async def abefore_model(self, state: TutorState, runtime: Any) -> dict[str, Any] | None:
         # updates the agent state before each model call
@@ -93,7 +110,20 @@ class MemoryRecallMiddleware(AgentMiddleware):
             return None
 
         started = time.perf_counter()
-        recalled = await self._memory.recall(self._user_id(runtime), query) # The MemoryManager searches for relevant
+        user_id = self._user_id(runtime)
+
+        if not user_id:
+            log.warning("agent.memory_skipped_no_user_id")
+
+            return {
+                "recalled": "",
+                "recalled_turn_id": turn_id,
+            }
+
+        recalled = await self._memory.recall(
+            user_id,
+            query,
+        ) # The MemoryManager searches for relevant
         """
         This `MEMORY_RECALL` helps to find:
             - Performance bottleneck
@@ -113,18 +143,64 @@ class MemoryRecallMiddleware(AgentMiddleware):
         )
         return {"recalled": rendered, "recalled_turn_id": turn_id}
 
-    async def awrap_model_call(self, request: ModelRequest, handler: Any) -> Any:
-        """
-        Fold recalled memory into the system prompt for this call.
-        This wraps the actual Qwen API call
-        """
+    async def awrap_model_call(
+        self,
+        request: ModelRequest,
+        handler: Any,
+    ) -> Any:
         recalled = ""
+
         state = getattr(request, "state", None)
+
         if isinstance(state, dict):
             recalled = state.get("recalled") or ""
+
+        request.system_prompt = self._base_prompt
+
         if recalled:
-            request.system_prompt = f"{self._base_prompt}\n\n{recalled}"
-        return await handler(request)
+            request.system_prompt = (
+                f"{self._base_prompt}\n\n"
+                f"<recalled_memory>\n"
+                f"{recalled}\n"
+                f"</recalled_memory>"
+            )
+
+        try:
+            return await handler(request)
+
+        except BadRequestError as exc:
+            body = getattr(exc, "body", None) or {}
+
+            if isinstance(body, dict):
+                error = body.get("error", body)
+                code = error.get("code")
+            else:
+                code = None
+
+            if code != "data_inspection_failed":
+                raise
+
+            log.warning(
+                "agent.model_input_rejected",
+                recalled_chars=len(recalled),
+                message_count=len(request.messages),
+                message_sizes=[
+                    len(str(message.content))
+                    for message in request.messages
+                ],
+            )
+
+            # Retry once without recalled long-term memory.
+            if recalled:
+                log.warning(
+                    "agent.retrying_without_memory",
+                    recalled_chars=len(recalled),
+                )
+
+                request.system_prompt = self._base_prompt
+                return await handler(request)
+
+            raise
 
 
 def build_agent(
