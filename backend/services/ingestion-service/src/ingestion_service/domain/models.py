@@ -5,7 +5,7 @@ import uuid
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 SCHEMA_VERSION = 2
@@ -89,12 +89,19 @@ class Chunk(BaseModel):
     text: str
     embed_text: str
     type: BlockType
+    lesson_title: str | None = None
     section_path: list[str] = Field(default_factory=list)
     page: int | None = None
     bbox: tuple[float, float, float, float] | None = None
     chunk_index: int
     token_count: int
     extra: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def derive_lesson_title(self) -> "Chunk":
+        if self.lesson_title is None and self.section_path:
+            self.lesson_title = self.section_path[0]
+        return self
 
     def wire_dict(self) -> dict[str, Any]:
         data = self.model_dump(mode="json")

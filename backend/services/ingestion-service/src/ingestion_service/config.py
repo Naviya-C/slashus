@@ -50,10 +50,9 @@ class Settings(BaseSettings):
     ocr_timeout_seconds: int = Field(45, ge=1, le=300)
     ocr_min_text_characters: int = Field(80, ge=0)
 
-    heading_max_characters: int = Field(180, ge=20, le=500)
-    heading_h1_ratio: float = Field(1.50, ge=1.1, le=3.0)
-    heading_h2_ratio: float = Field(1.28, ge=1.05, le=2.5)
-    heading_h3_ratio: float = Field(1.10, ge=1.0, le=2.0)
+    lesson_title_max_characters: int = Field(120, ge=20, le=500)
+    lesson_title_min_ratio: float = Field(1.60, ge=1.1, le=3.0)
+    lesson_title_merge_gap_ratio: float = Field(1.80, ge=0.1, le=5.0)
 
     extract_images: bool = True
     min_image_width: int = Field(120, ge=1)

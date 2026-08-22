@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import io
+import re
 from collections.abc import Iterator
-from dataclasses import dataclass
 from pathlib import Path
+from statistics import median
 from typing import Any
 
 import pymupdf
@@ -16,9 +17,7 @@ from .ocr import OCREngine
 from .piliwela_adapter import PiliwelaConverter
 
 
-@dataclass(frozen=True)
-class DocumentStyleProfile:
-    body_size: float
+_NUMBER_ONLY = re.compile(r"^[\d\s.,:/–-]+$")
 
 
 class PDFReader:
@@ -40,14 +39,11 @@ class PDFReader:
         with pymupdf.open(path) as document:
             if document.page_count > self._cfg.max_document_units:
                 raise ValueError(f"document has {document.page_count} pages; limit exceeded")
-            profile = self._style_profile(document)
             section_stack: list[str] = []
             for page_index in range(document.page_count):
                 page = document.load_page(page_index)
                 table_blocks, table_boxes = self._table_blocks(page, section_stack)
-                blocks, section_stack = self._text_blocks(
-                    page, section_stack, table_boxes, profile
-                )
+                blocks, section_stack = self._text_blocks(page, section_stack, table_boxes)
                 if sum(len(block.text.strip()) for block in blocks) < self._cfg.ocr_min_text_characters:
                     blocks = self._ocr_blocks(page, section_stack) or blocks
                 assets = self._images(page)
@@ -65,70 +61,89 @@ class PDFReader:
         page: pymupdf.Page,
         section_stack: list[str],
         excluded_boxes: list[tuple[float, float, float, float]],
-        profile: DocumentStyleProfile,
     ) -> tuple[list[ExtractedBlock], list[str]]:
         raw = page.get_text("dict", sort=True)
-        spans: list[dict[str, Any]] = []
+        lines: list[dict[str, Any]] = []
         for block in raw.get("blocks", []):
             if block.get("type") != 0:
                 continue
             for line in block.get("lines", []):
                 line_parts: list[str] = []
-                line_sizes: list[float] = []
-                flags = 0
+                size_weights: list[tuple[float, int]] = []
+                bold_characters = 0
+                total_characters = 0
                 bbox = tuple(line.get("bbox") or (0, 0, 0, 0))
                 for span in line.get("spans", []):
                     text = str(span.get("text") or "")
+                    font_name = str(span.get("font") or "")
                     if text.strip():
-                        text = self._converter.convert(text, str(span.get("font") or ""))
+                        text = self._converter.convert(text, font_name)
                     line_parts.append(text)
                     size = float(span.get("size") or 0)
                     if text.strip():
-                        line_sizes.append(size)
-                    flags |= int(span.get("flags") or 0)
+                        characters = len(text)
+                        size_weights.append((size, characters))
+                        total_characters += characters
+                        if int(span.get("flags") or 0) & 16 or "bold" in font_name.lower():
+                            bold_characters += characters
                 text = "".join(line_parts).strip()
-                if text and not _center_in_any(bbox, excluded_boxes):
-                    spans.append(
+                # Detect titles on the complete line set first. Some textbook
+                # title decorations are falsely recognized as table regions.
+                if text:
+                    lines.append(
                         {
                             "text": text,
-                            "size": max(line_sizes, default=0),
-                            "flags": flags,
+                            "size": _weighted_median(size_weights),
+                            "bold": total_characters > 0
+                            and bold_characters / total_characters >= 0.60,
                             "bbox": bbox,
+                            "is_title": False,
                         }
                     )
 
-        if not spans:
+        if not lines:
             return [], section_stack
-        result: list[ExtractedBlock] = []
-        current_section = list(section_stack)
-        for item in spans:
-            text = item["text"]
-            is_bold = bool(item["flags"] & 16)
-            level = _heading_level(
-                text=text,
-                size=item["size"],
-                bold=is_bold,
-                body_size=profile.body_size,
-                max_characters=self._cfg.heading_max_characters,
-                h1_ratio=self._cfg.heading_h1_ratio,
-                h2_ratio=self._cfg.heading_h2_ratio,
-                h3_ratio=self._cfg.heading_h3_ratio,
+        all_sizes = [float(line["size"]) for line in lines]
+        for line in lines:
+            line["is_title"] = _is_lesson_title(
+                text=str(line["text"]),
+                size=float(line["size"]),
+                all_sizes=all_sizes,
+                min_ratio=self._cfg.lesson_title_min_ratio,
+                max_characters=self._cfg.lesson_title_max_characters,
             )
-            if level is not None:
-                # Never create a hierarchy with missing parents. A document that
-                # starts with an H2-sized line treats it as its current top level.
-                level = min(level, len(current_section) + 1)
-                current_section = [*current_section[: level - 1], text]
+        _merge_split_titles(lines, self._cfg.lesson_title_merge_gap_ratio)
+
+        carried_title = section_stack[0] if section_stack else None
+        title_events = sorted(
+            (float(line["bbox"][1]), str(line["text"]).strip())
+            for line in lines
+            if line["is_title"]
+        )
+        result: list[ExtractedBlock] = []
+        for item in lines:
+            if not item["is_title"] and _center_in_any(item["bbox"], excluded_boxes):
+                continue
+            text = str(item["text"])
+            title = carried_title
+            y_top = float(item["bbox"][1])
+            for title_y, candidate in title_events:
+                if title_y <= y_top + 2.0:
+                    title = candidate
+                else:
+                    break
+            lesson_path = [title] if title else []
+            if item["is_title"]:
                 result.append(
                     ExtractedBlock(
                         block_type=BlockType.HEADING,
                         text=text,
-                        section_path=list(current_section),
+                        section_path=lesson_path,
                         bbox=item["bbox"],
                         metadata={
-                            "heading_level": level,
+                            "lesson_title": title,
                             "font_size": item["size"],
-                            "body_font_size": profile.body_size,
+                            "body_font_size": median(all_sizes),
                         },
                     )
                 )
@@ -137,31 +152,13 @@ class PDFReader:
                     ExtractedBlock(
                         block_type=BlockType.PARAGRAPH,
                         text=text,
-                        section_path=list(current_section),
+                        section_path=lesson_path,
                         bbox=item["bbox"],
+                        metadata={"lesson_title": title} if title else {},
                     )
                 )
-        return result, current_section
-
-    @staticmethod
-    def _style_profile(document: pymupdf.Document) -> DocumentStyleProfile:
-        """Find the document body font using character-weighted frequency."""
-        weights: dict[float, int] = {}
-        for page_index in range(document.page_count):
-            page = document.load_page(page_index)
-            raw = page.get_text("dict", sort=False)
-            for block in raw.get("blocks", []):
-                if block.get("type") != 0:
-                    continue
-                for line in block.get("lines", []):
-                    for span in line.get("spans", []):
-                        text = str(span.get("text") or "").strip()
-                        size = round(float(span.get("size") or 0), 1)
-                        if text and size > 0:
-                            weights[size] = weights.get(size, 0) + len(text)
-            page = None
-        body_size = max(weights, key=weights.get) if weights else 10.0
-        return DocumentStyleProfile(body_size=body_size)
+        final_title = title_events[-1][1] if title_events else carried_title
+        return result, [final_title] if final_title else []
 
     def _ocr_blocks(
         self, page: pymupdf.Page, section_stack: list[str]
@@ -291,32 +288,52 @@ def _center_in_any(
     )
 
 
-def _heading_level(
+def _weighted_median(pairs: list[tuple[float, int]]) -> float:
+    items = sorted((value, weight) for value, weight in pairs if weight > 0)
+    total = sum(weight for _, weight in items)
+    if total == 0:
+        return 0.0
+    midpoint = total / 2
+    cumulative = 0
+    for value, weight in items:
+        cumulative += weight
+        if cumulative >= midpoint:
+            return value
+    return items[-1][0]
+
+
+def _is_lesson_title(
     *,
     text: str,
     size: float,
-    bold: bool,
-    body_size: float,
+    all_sizes: list[float],
+    min_ratio: float,
     max_characters: int,
-    h1_ratio: float,
-    h2_ratio: float,
-    h3_ratio: float,
-) -> int | None:
+) -> bool:
     normalized = " ".join(text.split())
-    if not normalized or len(normalized) > max_characters:
-        return None
-    if len(normalized.split()) > 24:
-        return None
-    if normalized.isdigit():
-        return None
-    # Ordinary prose ending in sentence punctuation should not become a title.
-    if normalized.endswith((".", "?", "!", "。", "？", "！")):
-        return None
-    ratio = size / max(body_size, 0.1)
-    if ratio >= h1_ratio:
-        return 1
-    if ratio >= h2_ratio:
-        return 2
-    if ratio >= h3_ratio and bold:
-        return 3
-    return None
+    if not normalized or not all_sizes or len(normalized) > max_characters:
+        return False
+    if _NUMBER_ONLY.fullmatch(normalized):
+        return False
+    if len(normalized.replace(" ", "")) < 2:
+        return False
+    if normalized[-1] in {".", ",", ";", ":", "!", "?", "\u201d", '"'}:
+        return False
+    body_size = median(all_sizes)
+    return size >= body_size * min_ratio
+
+
+def _merge_split_titles(lines: list[dict[str, Any]], gap_ratio: float) -> None:
+    titles = sorted(
+        (line for line in lines if line["is_title"]),
+        key=lambda line: float(line["bbox"][1]),
+    )
+    for first, second in zip(titles, titles[1:]):
+        if not second["is_title"]:
+            continue
+        same_size = abs(float(first["size"]) - float(second["size"])) <= 0.6
+        gap = float(second["bbox"][1]) - float(first["bbox"][3])
+        second_height = float(second["bbox"][3]) - float(second["bbox"][1])
+        if same_size and 0 <= gap <= second_height * gap_ratio:
+            first["text"] = f"{str(first['text']).strip()} {str(second['text']).strip()}"
+            second["is_title"] = False
