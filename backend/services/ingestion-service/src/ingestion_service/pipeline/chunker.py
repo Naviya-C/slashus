@@ -62,8 +62,8 @@ class BlockChunker:
             if not text:
                 continue
             if buffer and block.section_path != buffer[-1].section_path:
-                # Context overlap must never pull text from the previous section
-                # into a newly detected title/subtitle hierarchy.
+                # Context overlap must never pull text from the previous lesson
+                # into a newly detected lesson title.
                 flush()
                 buffer = []
                 buffer_tokens = 0

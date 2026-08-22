@@ -17,6 +17,8 @@ optionally queues images for a separately deployable vision worker.
   deterministic chunk IDs, compressed Kafka publication, and graceful worker shutdown.
 - Removed the second PDF parser. PyMuPDF now handles text, layout, tables, images, and rendering;
   table boxes are excluded from normal text to avoid duplicate content.
+- Restored the original textbook lesson-title strategy: one reliable large title, positional
+  assignment, split-title merging, and title carry-over across subsequent pages.
 
 ## Supported formats
 
