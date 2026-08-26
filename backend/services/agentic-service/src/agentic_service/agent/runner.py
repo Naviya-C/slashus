@@ -33,6 +33,7 @@ class TurnResult:
         "citations",
         "iterations",
         "messages",
+        "practice_set_id",
         "reply",
         "timed_out",
         "tokens",
@@ -49,6 +50,7 @@ class TurnResult:
         timed_out: bool = False,
         messages: list | None = None,
         citations: list[dict[str, Any]] | None = None,
+        practice_set_id: str | None = None,
     ) -> None:
         self.reply = reply
         self.tool_calls = tool_calls
@@ -57,6 +59,7 @@ class TurnResult:
         self.timed_out = timed_out
         self.messages = messages or []
         self.citations = citations or []
+        self.practice_set_id = practice_set_id
 
 
 class TurnRunner:
@@ -339,6 +342,7 @@ class TurnRunner:
             "tools_used": result.tool_calls,
             "iterations": result.iterations,
             "citations": result.citations,
+            "practice_set_id": result.practice_set_id,
         }
 
     # -------------------------helpers---------------------------------
@@ -376,12 +380,22 @@ class TurnRunner:
                 break
 
         registry: dict[str, dict[str, Any]] = {}
+        practice_set_id: str | None = None
         for msg in messages:
-            if not isinstance(msg, ToolMessage) or msg.name != "search_documents":
+            if not isinstance(msg, ToolMessage):
                 continue
             try:
                 payload = json.loads(str(msg.content))
             except (TypeError, json.JSONDecodeError):
+                continue
+            if msg.name == "save_practice_questions":
+                candidate = payload.get("practice_set_id")
+                try:
+                    practice_set_id = str(UUID(str(candidate)))
+                except (TypeError, ValueError):
+                    pass
+                continue
+            if msg.name != "search_documents":
                 continue
             for passage in payload.get("passages", []):
                 citation = str(passage.get("citation", ""))
@@ -410,6 +424,7 @@ class TurnRunner:
             tokens=tokens,
             messages=messages,
             citations=citations,
+            practice_set_id=practice_set_id,
         )
 
     def _schedule_consolidation(self, user_id: str, result: TurnResult) -> None:

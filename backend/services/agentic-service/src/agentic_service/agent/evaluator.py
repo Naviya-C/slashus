@@ -36,12 +36,7 @@ class AnswerEvaluator:
                 "feedback": question.get("explanation")
                 or ("Correct." if correct else "Review the explanation and try again."),
                 
-                "revealed_answer": (
-                    question.get("options", [])[question.get("correct_index")]
-                    if question.get("correct_index") is not None
-                    and question.get("correct_index") < len(question.get("options", []))
-                    else str(question.get("correct_index"))
-                ),
+                "revealed_answer": _choice_answer(question),
                 
                 "rubric_results": [],
             }
@@ -98,3 +93,14 @@ class AnswerEvaluator:
             result=result,
         )
         return {"question_id": str(question_id), **result}
+
+
+def _choice_answer(question: dict[str, Any]) -> str:
+    index = question.get("correct_index")
+    options = question.get("options") or []
+    if isinstance(index, int) and 0 <= index < len(options):
+        option = options[index]
+        if isinstance(option, dict):
+            return str(option.get("text", ""))
+        return str(option)
+    return ""
