@@ -336,8 +336,9 @@ def build_quiz_tools(repository: Any, evaluator: Any) -> list:
     ) -> str:
         """Save practice questions you have written so the student can answer them.
 
-        Call this AFTER composing questions from retrieved material, so they
-        become answerable and markable. Each question needs: qtype (one of mcq,
+        You MUST call this after composing any questions from retrieved
+        material. Questions that are only written in the chat reply cannot be
+        rendered or marked by the Practice Panel. Each question needs: qtype (one of mcq,
         true_false, short, structured, essay), question, and for mcq/true_false
         an options list plus correct_index; for written types a model_answer and
         a rubric of {point, marks} entries.

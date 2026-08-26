@@ -128,6 +128,11 @@ def create_app(*, settings: Settings, container: Any, health: HealthRegistry) ->
                                 assistant_message=str(event.get("reply", "")),
                                 intent="agent",
                                 citations=event.get("citations") or [],
+                                practice_set_id=(
+                                    UUID(event["practice_set_id"])
+                                    if event.get("practice_set_id")
+                                    else None
+                                ),
                             )
                         except Exception:
                             log.error(
@@ -154,6 +159,11 @@ def create_app(*, settings: Settings, container: Any, health: HealthRegistry) ->
                 assistant_message=result.reply,
                 intent="agent",
                 citations=result.citations,
+                practice_set_id=(
+                    UUID(result.practice_set_id)
+                    if result.practice_set_id
+                    else None
+                ),
             )
         except Exception:
             log.error("api.turn_not_persisted", session_id=session_id, exc_info=True)
@@ -165,6 +175,7 @@ def create_app(*, settings: Settings, container: Any, health: HealthRegistry) ->
             "iterations": result.iterations,
             "timed_out": result.timed_out,
             "citations": result.citations,
+            "practice_set_id": result.practice_set_id,
         }
 
     @app.get("/api/v1/practice/{set_id}", tags=["practice"])
