@@ -5,6 +5,7 @@ import {
     Target,
 } from "lucide-react";
 import SectionIntro from "./SectionIntro";
+import Reveal from "./Reveal";
 
 const outcomes = [
     {
@@ -41,23 +42,23 @@ export default function Outcomes() {
     return (
         <section
             id="benefits"
-            className="scroll-mt-28 bg-white px-5 py-24 sm:px-6 lg:py-32"
+            className="scroll-mt-28 bg-white px-5 py-24 transition-colors sm:px-6 lg:py-32 dark:bg-neutral-950"
         >
             <div className="mx-auto max-w-7xl">
-                <div className="flex flex-col justify-between gap-8 lg:flex-row lg:items-end">
+                <Reveal className="flex flex-col justify-between gap-8 lg:flex-row lg:items-end">
                     <SectionIntro
                         eyebrow="Built for better learning"
                         title="Move from reading to real understanding."
                         description="Slashus helps you to do something useful with every resource: understand it, question it, practise it, and improve from it."
                     />
-                </div>
+                </Reveal>
 
                 <div className="mt-14 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                     {outcomes.map(
-                        ({ icon: Icon, number, title, text, accent }) => (
+                        ({ icon: Icon, number, title, text, accent }, index) => (
+                            <Reveal key={title} delay={index * 90} className="h-full">
                             <article
-                                key={title}
-                                className="group rounded-[2rem] border border-neutral-200 bg-neutral-50 p-6 transition-all hover:-translate-y-1 hover:bg-white hover:shadow-xl hover:shadow-neutral-200/60 sm:p-7"
+                                className="group h-full rounded-[2rem] border border-neutral-200 bg-neutral-50 p-6 transition-all hover:-translate-y-1 hover:bg-white hover:shadow-xl hover:shadow-neutral-200/60 sm:p-7 dark:border-neutral-800 dark:bg-neutral-900/50 dark:hover:bg-neutral-900 dark:hover:shadow-black/40"
                             >
                                 <div className="flex items-center justify-between">
                                     <span
@@ -65,17 +66,18 @@ export default function Outcomes() {
                                     >
                                         <Icon size={20} />
                                     </span>
-                                    <span className="text-xs font-semibold tracking-[0.16em] text-neutral-300">
+                                    <span className="text-xs font-semibold tracking-[0.16em] text-neutral-300 dark:text-neutral-700">
                                         {number}
                                     </span>
                                 </div>
-                                <h3 className="mt-8 text-xl font-semibold text-neutral-950">
+                                <h3 className="mt-8 text-xl font-semibold text-neutral-950 dark:text-white">
                                     {title}
                                 </h3>
-                                <p className="mt-3 text-sm leading-6 text-neutral-600">
+                                <p className="mt-3 text-sm leading-6 text-neutral-600 dark:text-neutral-400">
                                     {text}
                                 </p>
                             </article>
+                            </Reveal>
                         ),
                     )}
                 </div>

@@ -1,21 +1,10 @@
 import { useCallback, useState } from "react";
 
-import {
-    getPractice,
-    getSession,
-    markPractice,
-    sendChatMessage,
-} from "../features/chat/api";
-import {
-    normalizePractice,
-    normalizeSessionMessages,
-} from "../features/chat/normalizers";
-import type {
-    Answer,
-    Message,
-    Question,
-    QuestionResult,
-} from "../features/chat/types";
+import { getSession, sendChatMessage } from "../features/chat/api";
+import { normalizeSessionMessages } from "../features/chat/normalizers";
+import { usedPracticeTool } from "../features/chat/session";
+import type { Message } from "../features/chat/types";
+import { usePractice } from "../features/chat/usePractice";
 
 export type {
     Answer,
@@ -30,13 +19,10 @@ export type {
 export function useChat(documentIds: string[]) {
     const [sessionId, setSessionId] = useState<string | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
-    const [questions, setQuestions] = useState<Question[]>([]);
-    const [answers, setAnswers] = useState<Record<string, Answer>>({});
-    const [results, setResults] = useState<Record<string, QuestionResult>>({});
     const [sending, setSending] = useState(false);
-    const [marking, setMarking] = useState(false);
     const [loadingSession, setLoadingSession] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [chatError, setChatError] = useState<string | null>(null);
+    const practice = usePractice();
 
     const send = useCallback(
         async (text: string) => {
@@ -48,7 +34,7 @@ export function useChat(documentIds: string[]) {
 
             setMessages((current) => [...current, userMessage]);
             setSending(true);
-            setError(null);
+            setChatError(null);
 
             try {
                 const response = await sendChatMessage(
@@ -69,136 +55,77 @@ export function useChat(documentIds: string[]) {
                     },
                 ]);
 
-                if (response.kind === "questions" && response.questions) {
-                    setQuestions(response.questions);
-                    setAnswers({});
-                    setResults({});
+                if (response.practice_set_id) {
+                    await practice.loadById(response.practice_set_id);
+                } else if (usedPracticeTool(response.tools_used)) {
+                    await practice.loadForSession(response.session_id);
                 }
-            } catch (caughtError) {
+            } catch (error) {
                 setMessages((current) =>
                     current.filter((message) => message.id !== userMessage.id),
                 );
-                setError(
-                    caughtError instanceof Error
-                        ? caughtError.message
-                        : "Something went wrong",
+                setChatError(
+                    error instanceof Error ? error.message : "Something went wrong",
                 );
             } finally {
                 setSending(false);
             }
         },
-        [documentIds, sessionId],
+        [
+            documentIds,
+            practice.loadById,
+            practice.loadForSession,
+            sessionId,
+        ],
     );
 
-    const answer = useCallback((value: Answer) => {
-        setAnswers((current) => ({
-            ...current,
-            [value.question_id]: value,
-        }));
-    }, []);
+    const openSession = useCallback(
+        async (id: string) => {
+            setSessionId(id);
+            setLoadingSession(true);
+            setChatError(null);
+            setMessages([]);
+            practice.clear();
 
-    const mark = useCallback(async () => {
-        const submission = Object.values(answers);
-
-        if (!sessionId || submission.length === 0) {
-            return;
-        }
-
-        setMarking(true);
-        setError(null);
-
-        try {
-            const response = await markPractice(sessionId, submission);
-            setResults(
-                Object.fromEntries(
-                    (response.results ?? []).map((result) => [
-                        result.question_id,
-                        result,
-                    ]),
-                ),
-            );
-        } catch (caughtError) {
-            setError(
-                caughtError instanceof Error
-                    ? caughtError.message
-                    : "Marking failed",
-            );
-        } finally {
-            setMarking(false);
-        }
-    }, [answers, sessionId]);
-
-    const openSession = useCallback(async (id: string) => {
-        setSessionId(id);
-        setLoadingSession(true);
-        setError(null);
-        clearConversation();
-
-        try {
-            const session = await getSession(id);
-
-            setMessages(normalizeSessionMessages(session.messages));
-
-            const practiceSetId =
-                session.last_practice_set_id ??
-                session.practice_set_id ??
-                session.session?.last_practice_set_id ??
-                session.session?.practice_set_id ??
-                session.messages.find((message) => message.practice_set_id)
-                    ?.practice_set_id ??
-                null;
-
-            if (practiceSetId) {
-                try {
-                    const practice = await getPractice(practiceSetId);
-                    const restored = normalizePractice(practice);
-                    setQuestions(restored.questions);
-                    setAnswers(restored.answers);
-                    setResults(restored.results);
-                } catch {
-                    setQuestions([]);
-                    setAnswers({});
-                    setResults({});
-                }
+            try {
+                const session = await getSession(id);
+                setMessages(normalizeSessionMessages(session.messages));
+                await practice.loadFromSession(session);
+            } catch (error) {
+                setMessages([]);
+                practice.clear();
+                setChatError(
+                    error instanceof Error
+                        ? error.message
+                        : "Could not load this session",
+                );
+            } finally {
+                setLoadingSession(false);
             }
-        } catch (caughtError) {
-            clearConversation();
-            setError(
-                caughtError instanceof Error
-                    ? caughtError.message
-                    : "Could not load this session",
-            );
-        } finally {
-            setLoadingSession(false);
-        }
-    }, []);
+        },
+        [practice.clear, practice.loadFromSession],
+    );
 
     const newSession = useCallback(() => {
         setSessionId(null);
-        setError(null);
-        clearConversation();
-    }, []);
-
-    function clearConversation() {
         setMessages([]);
-        setQuestions([]);
-        setAnswers({});
-        setResults({});
-    }
+        setChatError(null);
+        practice.clear();
+    }, [practice.clear]);
 
     return {
         sessionId,
         messages,
-        questions,
-        answers,
-        results,
+        questions: practice.questions,
+        answers: practice.answers,
+        results: practice.results,
         sending,
-        marking,
+        marking: practice.marking,
         loadingSession,
-        error,
+        error: chatError ?? practice.error,
         send,
-        answer,
-        mark,
+        answer: practice.answer,
+        mark: practice.mark,
         openSession,
         newSession,
     };

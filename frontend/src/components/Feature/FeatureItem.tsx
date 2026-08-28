@@ -31,6 +31,7 @@ export default function FeatureItem({ feature }: Props) {
             font-mono
             font-bold
             text-black
+            dark:text-white
             text-lg
             sm:text-xl
             lg:text-2xl
@@ -46,6 +47,7 @@ export default function FeatureItem({ feature }: Props) {
             text-sm
             leading-7
             text-[#8c8ca0]
+            dark:text-neutral-400
             sm:text-base
             md:mt-3
           "

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Download, MoreVertical, Pencil, Trash2 } from "lucide-react";
 
-import type { Document } from "../../Hooks/useDocuments";
+import type { Document } from "../../features/documents/types";
 
 export const MAX_SELECTED = 3;
 
@@ -63,7 +63,7 @@ function DocumentList({
     }, [menuFor]);
 
     if (loading) {
-        return <p className="px-1 text-xs text-neutral-500">Loading…</p>;
+        return <p className="px-1 text-xs text-[var(--tx3)]">Loading…</p>;
     }
 
     if (error) {
@@ -72,7 +72,7 @@ function DocumentList({
 
     if (documents.length === 0) {
         return (
-            <p className="px-1 text-xs text-neutral-500">
+            <p className="px-1 text-xs text-[var(--tx3)]">
                 No documents yet. Upload a PDF to get started.
             </p>
         );
@@ -84,7 +84,7 @@ function DocumentList({
     return (
         <div ref={listRef} className="space-y-2">
             {atCap && (
-                <p className="px-1 pb-1 text-xs text-neutral-500">
+                <p className="px-1 pb-1 text-xs text-[var(--tx3)]">
                     {MAX_SELECTED} of {MAX_SELECTED} selected — deselect one to
                     change.
                 </p>
@@ -105,8 +105,8 @@ function DocumentList({
                   selected
                       ? "border-red-500/60 bg-red-500/10"
                       : locked
-                        ? "border-neutral-800/60"
-                        : "border-neutral-800 hover:border-neutral-700"
+                        ? "border-[var(--bd)]"
+                        : "border-[var(--bd)] hover:border-[var(--bd2)]"
               }
             `}
                     >
@@ -131,7 +131,7 @@ function DocumentList({
                   ${
                       selected
                           ? "border-red-500 bg-red-500 text-white"
-                          : "border-neutral-600"
+                          : "border-[var(--bd2)]"
                   }
                 `}
                             >
@@ -140,18 +140,18 @@ function DocumentList({
 
                             <span
                                 className="
-                  shrink-0 rounded-md bg-neutral-800 px-2 py-1
-                  text-[10px] font-semibold tracking-wider text-neutral-400
+                  shrink-0 rounded-md bg-[var(--sf3)] px-2 py-1
+                  text-[10px] font-semibold tracking-wider text-[var(--tx2)]
                 "
                             >
                                 PDF
                             </span>
 
                             <span className="min-w-0 flex-1">
-                                <span className="block truncate text-sm text-neutral-100">
+                                <span className="block truncate text-sm text-[var(--tx)]">
                                     {doc.name}
                                 </span>
-                                <span className="block text-xs text-neutral-500">
+                                <span className="block text-xs text-[var(--tx3)]">
                                     {relativeDate(doc.created_at)}
                                 </span>
                             </span>
@@ -167,8 +167,8 @@ function DocumentList({
                                     setMenuFor(menuOpen ? null : doc.doc_id)
                                 }
                                 className="
-                mr-2 shrink-0 rounded-md p-1.5 text-neutral-500
-                transition-colors hover:bg-neutral-800 hover:text-neutral-300
+                mr-2 shrink-0 rounded-md p-1.5 text-[var(--tx3)]
+                transition-colors hover:bg-[var(--sf3)] hover:text-[var(--tx)]
               "
                             >
                                 <MoreVertical size={16} />
@@ -180,8 +180,8 @@ function DocumentList({
                                 role="menu"
                                 className="
                   absolute right-2 top-full z-50 mt-1 w-40
-                  overflow-hidden rounded-lg border border-neutral-800
-                  bg-neutral-900 shadow-xl shadow-black/40
+                  overflow-hidden rounded-lg border border-[var(--bd)]
+                  bg-[var(--sf)] shadow-xl shadow-black/40
                 "
                             >
                                 {[
@@ -218,9 +218,9 @@ function DocumentList({
                                                 }}
                                                 className="
                       flex w-full items-center gap-2.5 px-3 py-2
-                      text-left text-xs text-neutral-300
-                      transition-colors hover:bg-neutral-800
-                      hover:text-neutral-100
+                      text-left text-xs text-[var(--tx2)]
+                      transition-colors hover:bg-[var(--sf3)]
+                      hover:text-[var(--tx)]
                     "
                                             >
                                                 <Icon size={14} />
@@ -239,7 +239,7 @@ function DocumentList({
                                         }}
                                         className="
                     flex w-full items-center gap-2.5 border-t
-                    border-neutral-800 px-3 py-2 text-left text-xs text-red-400
+                    border-[var(--bd)] px-3 py-2 text-left text-xs text-red-400
                     transition-colors hover:bg-red-500/10
                   "
                                     >

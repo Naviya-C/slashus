@@ -3,8 +3,10 @@ import { Link, useLocation } from "react-router-dom";
 import { LogIn, Menu, X } from "lucide-react";
 
 import Logo from "../Atomic/Logo";
+import ThemeToggle from "../Atomic/ThemeToggle";
 import { useNavScroll } from "../../Hooks/NavHook";
 import { useAuth } from "../../context/AuthContext";
+import { useTheme } from "../../context/ThemeContext";
 import { navItems } from "./navItems";
 import UserMenu from "../Chat/UserMenu";
 
@@ -13,6 +15,7 @@ export default function Navbar() {
     const [menuOpen, setMenuOpen] = useState(false);
     const location = useLocation();
     const { user } = useAuth();
+    const { resolvedTheme } = useTheme();
 
     useEffect(() => setMenuOpen(false), [location.pathname, location.hash]);
 
@@ -29,9 +32,9 @@ export default function Navbar() {
         <>
             <nav
                 aria-label="Main navigation"
-                className={`fixed inset-x-4 top-4 z-50 mx-auto max-w-6xl rounded-2xl border border-neutral-200/90 bg-white/90 px-4 py-3 backdrop-blur-xl transition-shadow sm:inset-x-6 sm:px-6 lg:top-5 lg:rounded-full lg:px-8 ${
+                className={`fixed inset-x-4 top-4 z-50 mx-auto max-w-6xl rounded-2xl border border-neutral-200/90 bg-white/90 px-4 py-3 backdrop-blur-xl transition-shadow sm:inset-x-6 sm:px-6 lg:top-5 lg:rounded-full lg:px-8 dark:border-neutral-800/90 dark:bg-neutral-950/85 ${
                     scrolled
-                        ? "shadow-[0_16px_50px_rgba(0,0,0,0.12)]"
+                        ? "shadow-[0_16px_50px_rgba(0,0,0,0.12)] dark:shadow-[0_16px_50px_rgba(0,0,0,0.6)]"
                         : "shadow-sm"
                 }`}
             >
@@ -45,7 +48,7 @@ export default function Navbar() {
                             <li key={item.label}>
                                 <Link
                                     to={item.to}
-                                    className="text-sm font-medium text-neutral-600 transition-colors hover:text-neutral-950"
+                                    className="text-sm font-medium text-neutral-600 transition-colors hover:text-neutral-950 dark:text-neutral-400 dark:hover:text-white"
                                 >
                                     {item.label}
                                 </Link>
@@ -53,58 +56,64 @@ export default function Navbar() {
                         ))}
                     </ul>
 
-                    {user ? (
-                        <div className="hidden md:block">
-                            <UserMenu theme="light" />
-                        </div>
-                    ) : (
-                        <Link
-                            to="/login"
-                            className="hidden items-center gap-2 rounded-xl border border-neutral-200 px-4 py-2 text-sm font-medium transition-colors hover:bg-neutral-100 md:flex"
-                        >
-                            <LogIn size={18} />
-                            Login
-                        </Link>
-                    )}
+                    <div className="flex items-center gap-2">
+                        <ThemeToggle className="hidden md:grid" />
 
-                    <button
-                        type="button"
-                        aria-label={
-                            menuOpen ? "Close navigation" : "Open navigation"
-                        }
-                        aria-expanded={menuOpen}
-                        aria-controls="mobile-navigation"
-                        onClick={() => setMenuOpen((open) => !open)}
-                        className="grid h-11 w-11 place-items-center rounded-xl text-neutral-800 transition-colors hover:bg-neutral-100 md:hidden"
-                    >
-                        {menuOpen ? <X size={24} /> : <Menu size={24} />}
-                    </button>
+                        {user ? (
+                            <div className="hidden md:block">
+                                <UserMenu theme={resolvedTheme} />
+                            </div>
+                        ) : (
+                            <Link
+                                to="/login"
+                                className="hidden items-center gap-2 rounded-xl border border-neutral-200 px-4 py-2 text-sm font-medium transition-colors hover:bg-neutral-100 md:flex dark:border-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-800"
+                            >
+                                <LogIn size={18} />
+                                Login
+                            </Link>
+                        )}
+
+                        <ThemeToggle className="md:hidden" />
+
+                        <button
+                            type="button"
+                            aria-label={
+                                menuOpen ? "Close navigation" : "Open navigation"
+                            }
+                            aria-expanded={menuOpen}
+                            aria-controls="mobile-navigation"
+                            onClick={() => setMenuOpen((open) => !open)}
+                            className="grid h-11 w-11 place-items-center rounded-xl text-neutral-800 transition-colors hover:bg-neutral-100 md:hidden dark:text-neutral-200 dark:hover:bg-neutral-800"
+                        >
+                            {menuOpen ? <X size={24} /> : <Menu size={24} />}
+                        </button>
+                    </div>
                 </div>
             </nav>
 
             {menuOpen && (
                 <div
                     id="mobile-navigation"
-                    className="fixed inset-x-4 top-[5.75rem] z-40 rounded-3xl border border-neutral-200 bg-white p-3 shadow-[0_24px_70px_rgba(0,0,0,0.16)] md:hidden"
+                    className="fixed inset-x-4 top-[5.75rem] z-40 rounded-3xl border border-neutral-200 bg-white p-3 shadow-[0_24px_70px_rgba(0,0,0,0.16)] md:hidden dark:border-neutral-800 dark:bg-neutral-900 dark:shadow-[0_24px_70px_rgba(0,0,0,0.6)]"
                 >
                     <div className="flex flex-col">
                         {navItems.map((item) => (
                             <Link
                                 key={item.label}
                                 to={item.to}
-                                className="rounded-2xl px-4 py-3.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100 hover:text-neutral-950"
+                                className="rounded-2xl px-4 py-3.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100 hover:text-neutral-950 dark:text-neutral-300 dark:hover:bg-neutral-800 dark:hover:text-white"
                             >
                                 {item.label}
                             </Link>
                         ))}
                         {user ? (
-                            <div className="mt-2 rounded-2xl border border-neutral-200 p-2">
-                                <UserMenu theme="light" align="left" />
+                            <div className="mt-2 rounded-2xl border border-neutral-200 p-2 dark:border-neutral-800">
+                                <UserMenu theme={resolvedTheme} align="left" />
                             </div>
                         ) : (
                             <Link
                                 to="/login"
-                                className="mt-2 flex items-center justify-center gap-2 rounded-2xl bg-neutral-950 px-4 py-3.5 text-sm font-semibold text-white"
+                                className="mt-2 flex items-center justify-center gap-2 rounded-2xl bg-neutral-950 px-4 py-3.5 text-sm font-semibold text-white dark:bg-white dark:text-neutral-950"
                             >
                                 <>
                                     <LogIn size={18} />

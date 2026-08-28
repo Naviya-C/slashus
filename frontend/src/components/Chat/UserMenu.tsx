@@ -3,14 +3,17 @@ import { useNavigate } from "react-router-dom";
 import { Lock, LogOut, MessageSquareText, Settings, User } from "lucide-react";
 
 import { useAuth } from "../../context/AuthContext";
+import { useTheme } from "../../context/ThemeContext";
 
 type Props = {
+    /** Force a variant. Omit to follow the active colour theme. */
     theme?: "dark" | "light";
     align?: "left" | "right";
 };
 
-export default function UserMenu({ theme = "dark", align = "right" }: Props) {
+export default function UserMenu({ theme, align = "right" }: Props) {
     const { user, logout } = useAuth();
+    const { resolvedTheme } = useTheme();
     const navigate = useNavigate();
     const [open, setOpen] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
@@ -34,7 +37,7 @@ export default function UserMenu({ theme = "dark", align = "right" }: Props) {
 
     if (!user) return null;
     const initial = (user.firstName?.[0] ?? "?").toUpperCase();
-    const isLight = theme === "light";
+    const isLight = (theme ?? resolvedTheme) === "light";
 
     async function handleLogout() {
         setOpen(false);

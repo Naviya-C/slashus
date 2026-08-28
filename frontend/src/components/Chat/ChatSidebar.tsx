@@ -1,4 +1,4 @@
-import type { Document } from "../../Hooks/useDocuments";
+import type { Document } from "../../features/documents/types";
 import FileDropzone from "./FileDropZone";
 import DocumentList from "./DocumentList";
 import SessionList from "./SessionList";
@@ -35,14 +35,14 @@ export default function ChatSidebar({
 
     return (
         <div className="flex h-full min-h-0 flex-col">
-            <section className="shrink-0 border-b border-neutral-800 px-3 py-4">
+            <section className="shrink-0 border-b border-[var(--bd)] px-3 py-4">
                 <PanelLabel number="01" label="Upload" />
                 <div className="mt-3">
                     <FileDropzone onUploaded={onUploaded} />
                 </div>
             </section>
 
-            <section className="flex min-h-0 flex-1 flex-col border-b border-neutral-800 px-2 py-4">
+            <section className="flex min-h-0 flex-1 flex-col border-b border-[var(--bd)] px-2 py-4">
                 <PanelLabel number="02" label="Documents" />
                 <div className="mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain">
                     <DocumentList
@@ -74,7 +74,7 @@ export default function ChatSidebar({
 
 function PanelLabel({ number, label }: { number: string; label: string }) {
     return (
-        <p className="px-2 text-[11px] font-medium uppercase tracking-[0.18em] text-neutral-500">
+        <p className="px-2 text-[11px] font-medium uppercase tracking-[0.18em] text-[var(--tx3)]">
             {number} / {label}
         </p>
     );

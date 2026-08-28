@@ -26,21 +26,23 @@ export default function PasswordRequirements({ password }: Props) {
 
     return (
         <div
-            className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 sm:grid-cols-2"
+            className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 sm:grid-cols-2 dark:border-neutral-800 dark:bg-neutral-900/60"
             aria-label="Password requirements"
         >
             {items.map((item) => (
                 <div
                     key={item.label}
                     className={`flex items-center gap-2 text-xs font-medium transition-colors ${
-                        item.valid ? "text-emerald-600" : "text-slate-400"
+                        item.valid
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : "text-slate-400 dark:text-neutral-500"
                     }`}
                 >
                     <span
                         className={`grid h-4 w-4 shrink-0 place-items-center rounded-full transition-colors ${
                             item.valid
                                 ? "bg-emerald-500 text-white"
-                                : "text-slate-300"
+                                : "text-slate-300 dark:text-neutral-600"
                         }`}
                     >
                         {item.valid ? (

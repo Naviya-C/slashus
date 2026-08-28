@@ -15,7 +15,7 @@ export default function Chat() {
     const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [leftWidth, setLeftWidth] = useState(304);
-    const [rightWidth, setRightWidth] = useState(520);
+    const [rightWidth, setRightWidth] = useState(440);
     const chat = useChat(selectedDocIds);
 
     const toggleSelect = useCallback((docId: string) => {
@@ -43,7 +43,7 @@ export default function Chat() {
     };
 
     return (
-        <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-neutral-950 text-neutral-100">
+        <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-[var(--bg)] text-[var(--tx)]">
             <ChatHeader
                 onOpenTools={() => setDrawerOpen(true)}
                 onNewChat={chat.newSession}
@@ -76,19 +76,19 @@ export default function Chat() {
                     onSend={chat.send}
                 />
 
-                <div className="hidden 2xl:flex">
+                <div className="hidden xl:flex">
                     <PanelResizer
                         label="Resize practice panel"
                         value={rightWidth}
                         min={340}
                         max={720}
-                        resetValue={520}
+                        resetValue={440}
                         side="right"
                         onChange={setRightWidth}
                     />
                 </div>
                 <aside
-                    className="hidden shrink-0 2xl:block"
+                    className="hidden shrink-0 xl:block"
                     style={{ width: rightWidth }}
                 >
                     <PracticePanel

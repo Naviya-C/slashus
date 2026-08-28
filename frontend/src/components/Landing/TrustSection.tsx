@@ -27,7 +27,7 @@ export default function TrustSection() {
     return (
         <section
             id="quality"
-            className="scroll-mt-28 bg-white px-5 py-24 sm:px-6 lg:py-32"
+            className="scroll-mt-28 bg-white px-5 py-24 transition-colors sm:px-6 lg:py-32 dark:bg-neutral-950"
         >
             <div className="mx-auto max-w-7xl overflow-hidden rounded-[2.5rem] bg-blue-600">
                 <div className="grid lg:grid-cols-[0.86fr_1.14fr]">
@@ -56,7 +56,7 @@ export default function TrustSection() {
                         {points.map(({ icon: Icon, label, text }) => (
                             <article
                                 key={label}
-                                className="bg-neutral-950 p-8 sm:p-10"
+                                className="bg-neutral-950 p-8 sm:p-10 dark:bg-[#0b0b10]"
                             >
                                 <Icon size={24} className="text-blue-400" />
                                 <h3 className="mt-8 text-lg font-semibold text-white">

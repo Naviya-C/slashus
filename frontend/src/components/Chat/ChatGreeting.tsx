@@ -16,7 +16,7 @@ export default function ChatGreeting() {
                 {greeting}
                 {firstName ? `, ${firstName}` : ""}
             </p>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-neutral-100 sm:text-3xl">
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--tx)] sm:text-3xl">
                 What would you like to learn today?
             </h1>
         </>

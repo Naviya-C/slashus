@@ -1,80 +1,131 @@
 import { getToken, setToken } from "./token";
 
-const BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+const BASE_URL = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+const AUTH_REFRESH_PATH = "/api/v1/auth/refresh";
+
+type ApiRequestInit = RequestInit & {
+    accessToken?: string | null;
+    retryAuth?: boolean;
+};
+
+type ErrorPayload = {
+    error?: string;
+    message?: string;
+    detail?: string;
+};
+
+export class ApiError extends Error {
+    constructor(
+        message: string,
+        readonly status: number,
+        readonly body?: unknown,
+    ) {
+        super(message);
+        this.name = "ApiError";
+    }
+}
 
 let refreshPromise: Promise<boolean> | null = null;
 
-async function refresh(): Promise<boolean> {
-    if (!refreshPromise) {
-        refreshPromise = (async () => {
-            try {
-                const res = await fetch(`${BASE}/api/v1/auth/refresh`, {
-                    method: "POST",
-                    credentials: "include", // the refresh token is an HttpOnly cookie
-                });
-                if (!res.ok) {
-                    setToken(null);
-                    return false;
-                }
-                const data = await res.json();
-                setToken(data.token);
-                return true;
-            } catch {
+async function refreshAccessToken(): Promise<boolean> {
+    refreshPromise ??= fetch(`${BASE_URL}${AUTH_REFRESH_PATH}`, {
+        method: "POST",
+        credentials: "include",
+    })
+        .then(async (response) => {
+            if (!response.ok) {
                 setToken(null);
                 return false;
-            } finally {
-                refreshPromise = null;
             }
-        })();
-    }
+            const data = (await response.json()) as { token?: string };
+            if (!data.token) {
+                setToken(null);
+                return false;
+            }
+            setToken(data.token);
+            return true;
+        })
+        .catch(() => {
+            setToken(null);
+            return false;
+        })
+        .finally(() => {
+            refreshPromise = null;
+        });
+
     return refreshPromise;
 }
 
 export async function apiFetch(
     path: string,
-    options: RequestInit = {},
+    options: ApiRequestInit = {},
 ): Promise<Response> {
-    const send = () => {
-        const headers = new Headers(options.headers);
+    const {
+        accessToken,
+        retryAuth = true,
+        headers: initialHeaders,
+        ...requestOptions
+    } = options;
 
-        const token = getToken();
+    const send = () => {
+        const headers = new Headers(initialHeaders);
+        const token = accessToken ?? getToken();
+
         if (token) headers.set("Authorization", `Bearer ${token}`);
-        if (options.body && !(options.body instanceof FormData)) {
-            if (!headers.has("Content-Type")) {
-                headers.set("Content-Type", "application/json");
-            }
+        if (
+            requestOptions.body &&
+            !(requestOptions.body instanceof FormData) &&
+            !headers.has("Content-Type")
+        ) {
+            headers.set("Content-Type", "application/json");
         }
 
-        return fetch(`${BASE}${path}`, {
-            ...options,
+        return fetch(`${BASE_URL}${path}`, {
+            ...requestOptions,
             headers,
             credentials: "include",
         });
     };
 
-    let res = await send();
+    let response = await send();
 
-    if (res.status === 401 && !path.includes("/auth/refresh")) {
-        const ok = await refresh();
-        if (ok) res = await send();
+    if (
+        response.status === 401 &&
+        retryAuth &&
+        path !== AUTH_REFRESH_PATH &&
+        (await refreshAccessToken())
+    ) {
+        response = await send();
     }
 
-    return res;
+    return response;
 }
 
 export async function apiJson<T>(
     path: string,
-    options: RequestInit = {},
+    options: ApiRequestInit = {},
 ): Promise<T> {
-    const res = await apiFetch(path, options);
-    if (!res.ok) {
-        let message = res.statusText;
-        try {
-            const body = await res.json();
-            if (body?.error) message = body.error;
-        } catch {}
-        throw new Error(message);
+    const response = await apiFetch(path, options);
+
+    if (!response.ok) {
+        const body = await readJson<ErrorPayload>(response);
+        const message =
+            body?.error ??
+            body?.message ??
+            body?.detail ??
+            response.statusText ??
+            "Request failed";
+        throw new ApiError(message, response.status, body);
     }
-    if (res.status === 204) return undefined as T;
-    return res.json();
+
+    if (response.status === 204) return undefined as T;
+    return (await response.json()) as T;
+}
+
+async function readJson<T>(response: Response): Promise<T | undefined> {
+    try {
+        return (await response.json()) as T;
+    } catch {
+        return undefined;
+    }
 }

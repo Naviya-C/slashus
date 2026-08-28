@@ -5,7 +5,7 @@ import { FEATURES } from "./features.data";
 
 export default function Features() {
     return (
-        <section className="bg-[#f7f7f7] py-24">
+        <section className="bg-[#f7f7f7] py-24 transition-colors dark:bg-[#0c0c10]">
             <div className="mx-auto max-w-7xl px-6">
                 <SectionHeader />
 

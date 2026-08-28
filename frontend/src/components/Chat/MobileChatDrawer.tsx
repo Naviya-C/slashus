@@ -8,8 +8,12 @@ import {
     X,
 } from "lucide-react";
 
-import type { Answer, Question, QuestionResult } from "../../Hooks/useChat";
-import type { Document } from "../../Hooks/useDocuments";
+import type {
+    Answer,
+    Question,
+    QuestionResult,
+} from "../../features/chat/types";
+import type { Document } from "../../features/documents/types";
 import DocumentList from "./DocumentList";
 import FileDropzone from "./FileDropZone";
 import PracticePanel from "./PracticePanel";
@@ -85,14 +89,14 @@ export default function MobileChatDrawer({
                 onClick={onClose}
             />
 
-            <aside className="absolute inset-y-0 right-0 flex w-[min(92vw,27rem)] flex-col border-l border-neutral-800 bg-neutral-950 shadow-2xl">
-                <div className="flex h-16 shrink-0 items-center justify-between border-b border-neutral-800 px-4">
+            <aside className="absolute inset-y-0 right-0 flex w-[min(92vw,27rem)] flex-col border-l border-[var(--bd)] bg-[var(--bg)] shadow-2xl">
+                <div className="flex h-16 shrink-0 items-center justify-between border-b border-[var(--bd)] px-4">
                     <UserMenu />
                     <button
                         type="button"
                         onClick={onClose}
                         aria-label="Close workspace menu"
-                        className="grid h-10 w-10 place-items-center rounded-xl text-neutral-300 hover:bg-neutral-900"
+                        className="grid h-10 w-10 place-items-center rounded-xl text-[var(--tx2)] hover:bg-[var(--sf2)]"
                     >
                         <X size={21} />
                     </button>
@@ -145,7 +149,7 @@ export default function MobileChatDrawer({
                                 : undefined
                         }
                     >
-                        <div className="h-[65dvh] min-h-[30rem] overflow-hidden rounded-xl border border-neutral-800">
+                        <div className="h-[65dvh] min-h-[30rem] overflow-hidden rounded-xl border border-[var(--bd)]">
                             <PracticePanel
                                 questions={questions}
                                 answers={answers}
@@ -179,23 +183,23 @@ function DrawerSection({
 }: DrawerSectionProps) {
     return (
         <details
-            className="group mb-2 rounded-2xl border border-neutral-800 bg-neutral-900/30"
+            className="group mb-2 rounded-2xl border border-[var(--bd)] bg-[var(--sf)]"
             open={defaultOpen}
         >
-            <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3.5 text-sm font-medium text-neutral-200">
-                <Icon size={17} className="text-neutral-500" />
+            <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3.5 text-sm font-medium text-[var(--tx2)]">
+                <Icon size={17} className="text-[var(--tx3)]" />
                 <span className="flex-1">{label}</span>
                 {badge && (
-                    <span className="rounded-full bg-neutral-800 px-2 py-0.5 text-[10px] text-neutral-400">
+                    <span className="rounded-full bg-[var(--sf3)] px-2 py-0.5 text-[10px] text-[var(--tx2)]">
                         {badge}
                     </span>
                 )}
                 <ChevronDown
                     size={16}
-                    className="text-neutral-500 transition-transform group-open:rotate-180"
+                    className="text-[var(--tx3)] transition-transform group-open:rotate-180"
                 />
             </summary>
-            <div className="border-t border-neutral-800 p-3">{children}</div>
+            <div className="border-t border-[var(--bd)] p-3">{children}</div>
         </details>
     );
 }

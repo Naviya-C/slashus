@@ -78,10 +78,10 @@ const AuthGl = ({ onSuccess }: Props) => {
                     aria-hidden="true"
                     className={`
 						w-14 h-14
-						border border-slate-300 rounded-xl
+						border border-slate-300 dark:border-neutral-700 rounded-xl
 						flex items-center justify-center
 						transition
-						${busy || !configured ? "opacity-50" : "hover:bg-slate-50"}
+						${busy || !configured ? "opacity-50" : "hover:bg-slate-50 dark:hover:bg-neutral-800"}
 					`}
                 >
                     <FcGoogle size={28} />
@@ -97,7 +97,7 @@ const AuthGl = ({ onSuccess }: Props) => {
             {shownError && (
                 <p
                     role="alert"
-                    className="text-xs text-red-600 text-center max-w-[10rem]"
+                    className="text-xs text-red-600 dark:text-red-400 text-center max-w-[10rem]"
                 >
                     {shownError}
                 </p>

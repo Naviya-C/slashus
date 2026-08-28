@@ -97,7 +97,7 @@ function SessionList({ activeId, onOpen, onDelete, refreshKey = 0 }: Props) {
     }, [load, refreshKey]);
 
     if (loading) {
-        return <p className="px-3 text-xs text-neutral-500">Loading…</p>;
+        return <p className="px-3 text-xs text-[var(--tx3)]">Loading…</p>;
     }
 
     if (error) {
@@ -106,7 +106,7 @@ function SessionList({ activeId, onOpen, onDelete, refreshKey = 0 }: Props) {
 
     if (sessions.length === 0) {
         return (
-            <p className="px-3 text-xs text-neutral-500">
+            <p className="px-3 text-xs text-[var(--tx3)]">
                 No conversations yet.
             </p>
         );
@@ -121,7 +121,7 @@ function SessionList({ activeId, onOpen, onDelete, refreshKey = 0 }: Props) {
                         key={s.id}
                         className={`
               relative flex w-full items-center rounded-lg transition-colors
-              ${active ? "bg-neutral-800" : "hover:bg-neutral-900"}
+              ${active ? "bg-[var(--sf3)]" : "hover:bg-[var(--sf2)]"}
             `}
                     >
                         <button
@@ -130,7 +130,7 @@ function SessionList({ activeId, onOpen, onDelete, refreshKey = 0 }: Props) {
                             className="min-w-0 flex-1 px-3 py-2.5 text-left"
                         >
                             <div className="flex items-baseline gap-2">
-                                <span className="shrink-0 text-[10px] tabular-nums text-neutral-600">
+                                <span className="shrink-0 text-[10px] tabular-nums text-[var(--tx3)]">
                                     {String(i + 1).padStart(2, "0")}
                                 </span>
 
@@ -138,13 +138,13 @@ function SessionList({ activeId, onOpen, onDelete, refreshKey = 0 }: Props) {
                                     <span
                                         className={`block truncate text-sm ${
                                             active
-                                                ? "text-neutral-100"
-                                                : "text-neutral-300"
+                                                ? "text-[var(--tx)]"
+                                                : "text-[var(--tx2)]"
                                         }`}
                                     >
                                         {s.title || "Untitled"}
                                     </span>
-                                    <span className="block text-xs text-neutral-500">
+                                    <span className="block text-xs text-[var(--tx3)]">
                                         {active
                                             ? "Active now"
                                             : relativeTime(s.last_message_at)}
@@ -163,7 +163,7 @@ function SessionList({ activeId, onOpen, onDelete, refreshKey = 0 }: Props) {
                                     current === s.id ? null : s.id,
                                 )
                             }
-                            className="mr-2 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-neutral-500 hover:bg-neutral-700 hover:text-neutral-200"
+                            className="mr-2 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--tx3)] hover:bg-[var(--sf3)] hover:text-[var(--tx)]"
                         >
                             <MoreVertical size={16} />
                         </button>
@@ -171,7 +171,7 @@ function SessionList({ activeId, onOpen, onDelete, refreshKey = 0 }: Props) {
                         {menuFor === s.id && (
                             <div
                                 role="menu"
-                                className="absolute right-2 top-full z-50 mt-1 w-36 overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900 shadow-xl shadow-black/40"
+                                className="absolute right-2 top-full z-50 mt-1 w-36 overflow-hidden rounded-lg border border-[var(--bd)] bg-[var(--sf)] shadow-xl shadow-black/40"
                             >
                                 <button
                                     role="menuitem"
@@ -194,7 +194,7 @@ function SessionList({ activeId, onOpen, onDelete, refreshKey = 0 }: Props) {
             {cursor && (
                 <button
                     onClick={() => load(cursor)}
-                    className="w-full px-3 py-2 text-xs text-neutral-500 hover:text-neutral-300"
+                    className="w-full px-3 py-2 text-xs text-[var(--tx3)] hover:text-[var(--tx)]"
                 >
                     Load older
                 </button>
