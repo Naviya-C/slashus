@@ -1,42 +1,24 @@
 import {
     createContext,
+    useCallback,
     useContext,
     useEffect,
+    useMemo,
     useState,
     type ReactNode,
 } from "react";
 
-import { apiJson } from "../lib/api";
-import { setToken } from "../lib/token";
+import {
+    getCurrentUser,
+    loginWithGoogleToken,
+    loginWithPassword,
+    logoutSession,
+    registerUser,
+} from "../features/auth/api";
+import type { User } from "../features/auth/types";
 import { clearGoogleAutoSelect } from "../lib/google";
 
-export type User = {
-    userid: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-    createdAt: string;
-};
-
-type ApiUser = {
-    userid?: string;
-    user_id?: string;
-    id?: string;
-    firstName?: string;
-    first_name?: string;
-    lastName?: string;
-    last_name?: string;
-    name?: string;
-    email: string;
-    createdAt?: string;
-    created_at?: string;
-};
-
-type AuthMeResponse = ApiUser | { user: ApiUser };
-
-type LoginResponse = {
-    token: string;
-};
+export type { User } from "../features/auth/types";
 
 type AuthContextValue = {
     user: User | null;
@@ -59,93 +41,72 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        (async () => {
-            try {
-                setUser(
-                    normalizeUser(
-                        await apiJson<AuthMeResponse>("/api/v1/auth/me"),
-                    ),
-                );
-            } catch {
-                setUser(null);
-            } finally {
-                setLoading(false);
-            }
-        })();
+        let active = true;
+
+        void getCurrentUser()
+            .then((currentUser) => {
+                if (active) setUser(currentUser);
+            })
+            .catch(() => {
+                if (active) setUser(null);
+            })
+            .finally(() => {
+                if (active) setLoading(false);
+            });
+
+        return () => {
+            active = false;
+        };
     }, []);
 
-    async function login(email: string, password: string) {
-        const res = await apiJson<LoginResponse>("/api/v1/auth/login", {
-            method: "POST",
-            body: JSON.stringify({ email, password }),
-        });
+    const login = useCallback(async (email: string, password: string) => {
+        setUser(await loginWithPassword(email, password));
+    }, []);
 
-        setToken(res.token);
-        setUser(
-            normalizeUser(await apiJson<AuthMeResponse>("/api/v1/auth/me")),
-        );
-    }
+    const loginWithGoogle = useCallback(async (idToken: string) => {
+        setUser(await loginWithGoogleToken(idToken));
+    }, []);
 
-    async function loginWithGoogle(idToken: string) {
-        const res = await apiJson<LoginResponse>("/api/v1/auth/google", {
-            method: "POST",
-            body: JSON.stringify({ id_token: idToken }),
-        });
+    const signup = useCallback(
+        async (
+            firstName: string,
+            lastName: string,
+            email: string,
+            password: string,
+        ) => {
+            setUser(
+                await registerUser(
+                    firstName,
+                    lastName,
+                    email,
+                    password,
+                ),
+            );
+        },
+        [],
+    );
 
-        setToken(res.token);
-        setUser(
-            normalizeUser(await apiJson<AuthMeResponse>("/api/v1/auth/me")),
-        );
-    }
-
-    async function signup(
-        firstName: string,
-        lastName: string,
-        email: string,
-        password: string,
-    ) {
-        await apiJson("/api/v1/auth/register", {
-            method: "POST",
-            body: JSON.stringify({ firstName, lastName, email, password }),
-        });
-        await login(email, password);
-    }
-
-    async function logout() {
+    const logout = useCallback(async () => {
         try {
-            await apiJson("/api/v1/auth/logout", { method: "POST" });
+            await logoutSession();
         } finally {
-            setToken(null);
             setUser(null);
             clearGoogleAutoSelect();
         }
-    }
+    }, []);
 
-    return (
-        <AuthContext.Provider
-            value={{ user, loading, login, loginWithGoogle, signup, logout }}
-        >
-            {children}
-        </AuthContext.Provider>
+    const value = useMemo<AuthContextValue>(
+        () => ({ user, loading, login, loginWithGoogle, signup, logout }),
+        [user, loading, login, loginWithGoogle, signup, logout],
     );
+
+    return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export function useAuth() {
-    const ctx = useContext(AuthContext);
-    if (!ctx) throw new Error("useAuth must be used inside <AuthProvider>");
-    return ctx;
-}
-
-function normalizeUser(response: AuthMeResponse): User {
-    const source = "user" in response ? response.user : response;
-    const nameParts = source.name?.trim().split(/\s+/) ?? [];
-
-    return {
-        userid: source.userid ?? source.user_id ?? source.id ?? "",
-        firstName: source.firstName ?? source.first_name ?? nameParts[0] ?? "",
-        lastName:
-            source.lastName ?? source.last_name ?? nameParts.slice(1).join(" "),
-        email: source.email,
-        createdAt: source.createdAt ?? source.created_at ?? "",
-    };
+export function useAuth(): AuthContextValue {
+    const context = useContext(AuthContext);
+    if (!context) {
+        throw new Error("useAuth must be used inside <AuthProvider>");
+    }
+    return context;
 }

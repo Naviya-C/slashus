@@ -68,15 +68,15 @@ function FileDropzone({ onUploaded }: Props) {
 			${
                 dragging
                     ? "border-red-500 bg-red-500/5"
-                    : "border-neutral-700 hover:border-neutral-600"
+                    : "border-[var(--bd2)] hover:border-[var(--bd2)]"
             }
 			${uploading ? "opacity-50 pointer-events-none" : ""}
 		`}
             >
-                <p className="text-sm text-neutral-300">
+                <p className="text-sm text-[var(--tx2)]">
                     {uploading ? "Uploading…" : "Drop files to index"}
                 </p>
-                <p className="mt-1 text-xs text-neutral-500">
+                <p className="mt-1 text-xs text-[var(--tx3)]">
                     PDF - <span className="text-red-400 underline">browse</span>
                 </p>
 

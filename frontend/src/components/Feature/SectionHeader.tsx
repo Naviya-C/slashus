@@ -16,6 +16,7 @@ export default function SectionHeader() {
         font-black
         leading-[1.05]
         text-black
+        dark:text-white
         text-3xl
         sm:text-4xl
         md:text-5xl

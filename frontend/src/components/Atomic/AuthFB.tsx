@@ -9,6 +9,7 @@ const AuthFB = () => {
                 h-14
                 border
                 border-slate-300
+                dark:border-neutral-700
                 rounded-xl
                 flex
                 items-center

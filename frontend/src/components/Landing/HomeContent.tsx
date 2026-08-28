@@ -3,15 +3,25 @@ import LearningWorkspace from "./LearningWorkspace";
 import UseCases from "./UseCases";
 import TrustSection from "./TrustSection";
 import FinalCta from "./FinalCta";
+import Reveal from "./Reveal";
+import type { ScrollDrive } from "../../Hooks/useScrollDrive";
 
-export default function HomeContent() {
+type Props = {
+    drive: ScrollDrive;
+};
+
+export default function HomeContent({ drive }: Props) {
     return (
         <>
             <Outcomes />
-            <LearningWorkspace />
+            <LearningWorkspace drive={drive} />
             <UseCases />
-            <TrustSection />
-            <FinalCta />
+            <Reveal>
+                <TrustSection />
+            </Reveal>
+            <Reveal>
+                <FinalCta />
+            </Reveal>
         </>
     );
 }

@@ -9,6 +9,7 @@ const AuthX = () => {
                 h-14
                 border
                 border-slate-300
+                dark:border-neutral-700
                 rounded-xl
                 flex
                 items-center
@@ -19,7 +20,7 @@ const AuthX = () => {
                 disabled:hover:bg-transparent
             "
         >
-            <FaXTwitter size={22} className="text-black" />
+            <FaXTwitter size={22} className="text-black dark:text-white" />
         </button>
     );
 };

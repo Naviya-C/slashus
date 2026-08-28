@@ -1,6 +1,11 @@
 import { Check, X } from "lucide-react";
 
-import type { Answer, Question, QuestionResult } from "../../Hooks/useChat";
+import type {
+    Answer,
+    Question,
+    QuestionResult,
+} from "../../features/chat/types";
+import QuestionFeedback from "./QuestionFeedback";
 
 type Props = {
     questions: Question[];
@@ -24,7 +29,7 @@ function PracticePanel({
     if (questions.length === 0) {
         return (
             <div className="flex h-full items-center justify-center px-8">
-                <p className="text-center text-sm text-neutral-500">
+                <p className="text-center text-sm text-[var(--tx3)]">
                     Ask for questions and they'll appear here.
                 </p>
             </div>
@@ -33,6 +38,7 @@ function PracticePanel({
 
     const marked = Object.keys(results).length;
     const answered = Object.keys(answers).length;
+    const allAnsweredQuestionsMarked = answered > 0 && marked >= answered;
 
     const totalMarks = Object.values(results).reduce((s, r) => s + r.marks, 0);
     const totalMax = Object.values(results).reduce(
@@ -43,12 +49,12 @@ function PracticePanel({
 
     return (
         <div className="flex h-full flex-col">
-            <div className="shrink-0 border-b border-neutral-800 px-5 py-4">
+            <div className="shrink-0 border-b border-[var(--bd)] px-5 py-4">
                 <div className="flex items-baseline justify-between">
-                    <span className="text-xs tracking-widest text-neutral-500">
+                    <span className="text-xs tracking-widest text-[var(--tx3)]">
                         03 / PRACTICE SET
                     </span>
-                    <span className="text-xs text-neutral-500">
+                    <span className="text-xs text-[var(--tx3)]">
                         {answered} of {questions.length} answered
                     </span>
                 </div>
@@ -56,14 +62,14 @@ function PracticePanel({
                 {marked > 0 && (
                     <>
                         <div className="mt-3 flex items-baseline gap-2">
-                            <span className="text-2xl font-semibold text-neutral-100">
+                            <span className="text-2xl font-semibold text-[var(--tx)]">
                                 {totalMarks}/{totalMax}
                             </span>
-                            <span className="text-xs tracking-wide text-neutral-500">
+                            <span className="text-xs tracking-wide text-[var(--tx3)]">
                                 MARKED
                             </span>
                         </div>
-                        <div className="mt-2 h-1 w-full overflow-hidden rounded bg-neutral-800">
+                        <div className="mt-2 h-1 w-full overflow-hidden rounded bg-[var(--sf3)]">
                             <div
                                 className="h-full rounded bg-red-500 transition-all"
                                 style={{ width: `${pct}%` }}
@@ -82,14 +88,14 @@ function PracticePanel({
                     return (
                         <div
                             key={q.id}
-                            className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4"
+                            className="rounded-xl border border-[var(--bd)] bg-[var(--sf)] p-4"
                         >
                             <div className="mb-3 flex items-center justify-between">
                                 <span className="flex items-center gap-2">
                                     <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
                                         {i + 1}
                                     </span>
-                                    <span className="text-[10px] tracking-widest text-neutral-500">
+                                    <span className="text-[10px] tracking-widest text-[var(--tx3)]">
                                         {q.type.toUpperCase()}
                                     </span>
                                 </span>
@@ -103,7 +109,7 @@ function PracticePanel({
                               ? "bg-emerald-500/15 text-emerald-400"
                               : result.is_correct === false
                                 ? "bg-red-500/15 text-red-400"
-                                : "bg-neutral-800 text-neutral-300"
+                                : "bg-[var(--sf3)] text-[var(--tx2)]"
                       }
                     `}
                                     >
@@ -122,7 +128,7 @@ function PracticePanel({
                                 )}
                             </div>
 
-                            <p className="mb-3 text-sm leading-relaxed text-neutral-100">
+                            <p className="mb-3 text-sm leading-relaxed text-[var(--tx)]">
                                 {q.question}
                             </p>
 
@@ -149,8 +155,8 @@ function PracticePanel({
                                   : isWrongPick
                                     ? "border-red-500/50 bg-red-500/10 text-red-100"
                                     : selected
-                                      ? "border-neutral-600 bg-neutral-800 text-neutral-100"
-                                      : "border-neutral-800 text-neutral-300 hover:border-neutral-700"
+                                      ? "border-[var(--bd2)] bg-[var(--sf3)] text-[var(--tx)]"
+                                      : "border-[var(--bd)] text-[var(--tx2)] hover:border-[var(--bd2)]"
                           }
                         `}
                                             >
@@ -186,73 +192,27 @@ function PracticePanel({
                                         })
                                     }
                                     className="
-                    w-full resize-none rounded-lg border border-neutral-800
-                    bg-neutral-900 px-3 py-2 text-sm text-neutral-100
-                    placeholder:text-neutral-600 outline-none
-                    focus:border-neutral-600 disabled:opacity-60
+                    w-full resize-none rounded-lg border border-[var(--bd)]
+                    bg-[var(--sf)] px-3 py-2 text-sm text-[var(--tx)]
+                    placeholder:text-[var(--tx3)] outline-none
+                    focus:border-[var(--bd2)] disabled:opacity-60
                   "
                                 />
                             )}
 
                             {result && (
-                                <div className="mt-3 space-y-2">
-                                    <p className="border-l-2 border-neutral-700 pl-3 text-xs leading-relaxed text-neutral-400">
-                                        {result.feedback}
-                                    </p>
-
-                                    {result.revealed_answer && (
-                                        <div className="rounded-lg bg-neutral-800/60 px-3 py-2">
-                                            <p className="mb-1 text-[10px] tracking-widest text-neutral-500">
-                                                MODEL ANSWER
-                                            </p>
-                                            <p className="text-xs leading-relaxed text-neutral-300">
-                                                {result.revealed_answer}
-                                            </p>
-                                        </div>
-                                    )}
-
-                                    {result.rubric_breakdown.length > 0 && (
-                                        <details className="text-xs">
-                                            <summary className="cursor-pointer text-neutral-500 hover:text-neutral-300">
-                                                Rubric
-                                            </summary>
-                                            <ul className="mt-2 space-y-1 pl-3">
-                                                {result.rubric_breakdown.map(
-                                                    (r, j) => (
-                                                        <li
-                                                            key={j}
-                                                            className="text-neutral-400"
-                                                        >
-                                                            <span
-                                                                className={
-                                                                    r.awarded >
-                                                                    0
-                                                                        ? "text-emerald-400"
-                                                                        : "text-neutral-600"
-                                                                }
-                                                            >
-                                                                {r.awarded}/
-                                                                {r.max}
-                                                            </span>{" "}
-                                                            {r.point}
-                                                        </li>
-                                                    ),
-                                                )}
-                                            </ul>
-                                        </details>
-                                    )}
-                                </div>
+                                <QuestionFeedback question={q} result={result} />
                             )}
                         </div>
                     );
                 })}
             </div>
 
-            <div className="shrink-0 border-t border-neutral-800 p-4">
+            <div className="shrink-0 border-t border-[var(--bd)] p-4">
                 <button
                     type="button"
                     onClick={onMark}
-                    disabled={marking || answered === 0 || marked > 0}
+                    disabled={marking || answered === 0 || allAnsweredQuestionsMarked}
                     className="
             w-full rounded-xl bg-red-500 py-3 text-sm font-semibold text-white
             transition-colors hover:bg-red-600
@@ -261,7 +221,7 @@ function PracticePanel({
                 >
                     {marking
                         ? "Marking..."
-                        : marked > 0
+                        : allAnsweredQuestionsMarked
                           ? "Marked"
                           : `Mark ${answered} answer${answered === 1 ? "" : "s"}`}
                 </button>
@@ -269,7 +229,7 @@ function PracticePanel({
                 {marked > 0 &&
                     totalMax > 0 &&
                     totalMarks / totalMax < REVEAL_BELOW / 10 && (
-                        <p className="mt-2 text-center text-xs text-neutral-500">
+                        <p className="mt-2 text-center text-xs text-[var(--tx3)]">
                             Model answers are shown above where you scored below
                             half marks.
                         </p>

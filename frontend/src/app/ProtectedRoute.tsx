@@ -9,9 +9,9 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
 
     if (loading) {
         return (
-            <main className="grid min-h-dvh place-items-center bg-neutral-950 text-neutral-400">
+            <main className="grid min-h-dvh place-items-center bg-[var(--bg)] text-[var(--tx2)]">
                 <div className="flex items-center gap-3 text-sm" role="status">
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-700 border-t-red-500" />
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--bd)] border-t-blue-600" />
                     Loading your workspace…
                 </div>
             </main>

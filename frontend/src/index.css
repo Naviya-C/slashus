@@ -1,5 +1,47 @@
 @import "tailwindcss";
 
+/* ------------------------------------------------------------------
+   Theme variants.
+   ThemeProvider puts exactly one of `light` / `dark` on <html>.
+   - `dark:`  -> used by light-first surfaces (landing, auth form)
+   - `light:` -> used by dark-first surfaces (chat workspace)
+------------------------------------------------------------------ */
+@custom-variant dark (&:where(.dark, .dark *));
+@custom-variant light (&:where(.light, .light *));
+
+/* ------------------------------------------------------------------
+   Design tokens. Used as bg-[var(--sf)], text-[var(--tx2)] etc.
+   Mainly consumed by the chat workspace, which is dark-first.
+------------------------------------------------------------------ */
+:root,
+.light {
+    --bg: #ffffff;
+    --sf: #fafafa;
+    --sf2: #f4f4f5;
+    --sf3: #e9e9ee;
+    --bd: #e5e5e5;
+    --bd2: #d4d4d4;
+    --tx: #171717;
+    --tx2: #52525b;
+    --tx3: #8a8a94;
+    --scroll-thumb: #d4d4d8;
+    color-scheme: light;
+}
+
+.dark {
+    --bg: #0a0a0c;
+    --sf: #101014;
+    --sf2: #17171d;
+    --sf3: #212129;
+    --bd: #2a2a32;
+    --bd2: #3a3a44;
+    --tx: #f2f2f4;
+    --tx2: #a1a1aa;
+    --tx3: #6b6b76;
+    --scroll-thumb: #33333d;
+    color-scheme: dark;
+}
+
 :root {
     font-family:
         Inter,
@@ -9,8 +51,6 @@
         BlinkMacSystemFont,
         "Segoe UI",
         sans-serif;
-    color: #171717;
-    background: #ffffff;
     font-synthesis: none;
     text-rendering: optimizeLegibility;
 }
@@ -18,12 +58,19 @@
 html {
     scroll-behavior: smooth;
     scroll-padding-top: 7rem;
+    background: var(--bg);
+    color: var(--tx);
 }
 
 body {
     min-width: 320px;
     min-height: 100vh;
     margin: 0;
+    background: var(--bg);
+    color: var(--tx);
+    transition:
+        background-color 0.25s ease,
+        color 0.25s ease;
 }
 
 button,
@@ -55,9 +102,156 @@ summary:focus-visible {
     outline-offset: 3px;
 }
 
+/* Scrollbars follow the theme */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scroll-thumb) transparent;
+}
+
+*::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+    background: var(--scroll-thumb);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 999px;
+}
+
+/* ------------------------------------------------------------------
+   Scroll reveal (used by Hooks/UserScrollRev.tsx)
+------------------------------------------------------------------ */
+.reveal {
+    opacity: 0;
+    transform: translateY(22px);
+    transition:
+        opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+        transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.reveal.revealed {
+    opacity: 1;
+    transform: none;
+}
+
+/* ------------------------------------------------------------------
+   3D logo primitives
+------------------------------------------------------------------ */
+.l3d-stage {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    perspective: 1400px;
+    perspective-origin: 50% 45%;
+}
+
+.l3d-world {
+    position: relative;
+    transform-style: preserve-3d;
+    will-change: transform;
+}
+
+.l3d-piece {
+    position: absolute;
+    transform-style: preserve-3d;
+    will-change: transform;
+}
+
+.l3d-slab {
+    position: absolute;
+    inset: 0;
+    backface-visibility: hidden;
+}
+
+.l3d-ring {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    border-radius: 999px;
+    border: 1px solid currentColor;
+    transform-style: preserve-3d;
+    will-change: transform;
+}
+
+.l3d-spark {
+    position: absolute;
+    border-radius: 999px;
+    will-change: transform, opacity;
+}
+
+@keyframes l3d-float {
+    0%,
+    100% {
+        transform: translate3d(0, -9px, 0);
+    }
+    50% {
+        transform: translate3d(0, 9px, 0);
+    }
+}
+
+.l3d-float {
+    animation: l3d-float 7s ease-in-out infinite;
+}
+
+/* Sparks carry an inline transform, so only their opacity may animate. */
+@keyframes l3d-twinkle {
+    0%,
+    100% {
+        opacity: 0.18;
+    }
+    50% {
+        opacity: 0.85;
+    }
+}
+
+/* ------------------------------------------------------------------
+   Hero aurora. These live on inner elements so the outer wrapper is
+   free to carry the scroll parallax transform without conflict.
+------------------------------------------------------------------ */
+@keyframes hero-aurora-a {
+    0%,
+    100% {
+        transform: translate3d(0, 0, 0) scale(1);
+    }
+    50% {
+        transform: translate3d(7%, -6%, 0) scale(1.16);
+    }
+}
+
+@keyframes hero-aurora-b {
+    0%,
+    100% {
+        transform: translate3d(0, 0, 0) scale(1.08);
+    }
+    50% {
+        transform: translate3d(-8%, 5%, 0) scale(0.94);
+    }
+}
+
+.hero-aurora-a {
+    animation: hero-aurora-a 16s ease-in-out infinite;
+}
+
+.hero-aurora-b {
+    animation: hero-aurora-b 19s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
     html {
         scroll-behavior: auto;
+    }
+
+    .reveal {
+        opacity: 1;
+        transform: none;
+        transition: none;
     }
 
     *,

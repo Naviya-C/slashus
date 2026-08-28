@@ -12,8 +12,8 @@ export default function GuestRoute({ children }: Props) {
 
     if (loading) {
         return (
-            <main className="grid min-h-dvh place-items-center bg-white text-neutral-500">
-                <span className="h-5 w-5 animate-spin rounded-full border-2 border-neutral-200 border-t-blue-600" />
+            <main className="grid min-h-dvh place-items-center bg-[var(--bg)] text-[var(--tx3)]">
+                <span className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--bd)] border-t-blue-600" />
             </main>
         );
     }

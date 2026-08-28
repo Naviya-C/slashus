@@ -47,7 +47,7 @@ export default function ChatInput({
     }
 
     return (
-        <div className="rounded-[1.35rem] border border-neutral-700/80 bg-[#1a1a1f] p-2 shadow-2xl shadow-black/20 transition-colors focus-within:border-blue-500/50">
+        <div className="rounded-[1.35rem] border border-[var(--bd2)] bg-[var(--sf2)] p-2 shadow-2xl shadow-black/20 transition-colors focus-within:border-blue-500/50">
             <textarea
                 ref={ref}
                 rows={1}
@@ -59,7 +59,7 @@ export default function ChatInput({
                     resize();
                 }}
                 onKeyDown={handleKeyDown}
-                className="min-h-11 w-full resize-none bg-transparent px-3 py-2.5 text-[15px] leading-6 text-neutral-100 placeholder:text-neutral-600 outline-none disabled:opacity-50"
+                className="min-h-11 w-full resize-none bg-transparent px-3 py-2.5 text-[15px] leading-6 text-[var(--tx)] placeholder:text-[var(--tx3)] outline-none disabled:opacity-50"
                 aria-label="Message"
             />
 
@@ -68,11 +68,11 @@ export default function ChatInput({
                     <button
                         type="button"
                         aria-label="Attach resource"
-                        className="grid h-8 w-8 place-items-center rounded-lg text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
+                        className="grid h-8 w-8 place-items-center rounded-lg text-[var(--tx3)] transition-colors hover:bg-[var(--sf3)] hover:text-[var(--tx)]"
                     >
                         <Paperclip size={17} />
                     </button>
-                    <span className="truncate text-[11px] text-neutral-600">
+                    <span className="truncate text-[11px] text-[var(--tx3)]">
                         {selectedCount > 0
                             ? String(selectedCount) +
                               " resource" +
@@ -85,7 +85,7 @@ export default function ChatInput({
                     type="button"
                     onClick={send}
                     disabled={disabled || !text.trim()}
-                    className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-600 text-white transition-all hover:bg-blue-500 active:scale-95 disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-600"
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-600 text-white transition-all hover:bg-blue-500 active:scale-95 disabled:cursor-not-allowed disabled:bg-[var(--sf3)] disabled:text-[var(--tx3)]"
                     aria-label="Send message"
                 >
                     <ArrowUp size={18} strokeWidth={2.5} />

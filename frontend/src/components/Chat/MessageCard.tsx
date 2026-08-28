@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Check, Copy, FileText, Sparkles } from "lucide-react";
 
-import type { Reason } from "../../Hooks/useChat";
+import type { Reason } from "../../features/chat/types";
 import { useAuth } from "../../context/AuthContext";
 
 type Citation = {
@@ -49,8 +49,8 @@ export default function MessageCard({
         (isUser
             ? "rounded-tr-md bg-blue-600 text-white shadow-blue-950/20"
             : blocked
-              ? "rounded-tl-md border border-amber-500/20 bg-amber-500/5 text-neutral-300"
-              : "rounded-tl-md border border-white/[0.06] bg-[#1b1b20] text-neutral-200 shadow-black/20");
+              ? "rounded-tl-md border border-amber-500/20 bg-amber-500/5 text-[var(--tx2)]"
+              : "rounded-tl-md border border-[var(--bd)] bg-[var(--sf2)] text-[var(--tx2)] shadow-black/20");
 
     return (
         <article className={rowClass}>
@@ -68,7 +68,7 @@ export default function MessageCard({
                     <span
                         className={
                             "text-[10px] font-bold uppercase tracking-[0.18em] " +
-                            (isUser ? "text-blue-400" : "text-neutral-500")
+                            (isUser ? "text-blue-400" : "text-[var(--tx3)]")
                         }
                     >
                         {isUser ? user?.firstName || "You" : "Slashus"}
@@ -90,13 +90,13 @@ export default function MessageCard({
                                     index,
                                 ].join("-")}
                                 title={citation.title ?? "Source"}
-                                className="inline-flex items-center gap-1.5 rounded-full border border-neutral-800 bg-neutral-900 px-2.5 py-1 text-[11px] text-neutral-400 transition-colors hover:border-blue-500/30 hover:text-blue-300"
+                                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--bd)] bg-[var(--sf)] px-2.5 py-1 text-[11px] text-[var(--tx2)] transition-colors hover:border-blue-500/30 hover:text-blue-300"
                             >
                                 <FileText size={11} />
                                 <span className="max-w-32 truncate">
                                     {citation.title || "Source"}
                                 </span>
-                                <span className="text-neutral-600">·</span>
+                                <span className="text-[var(--tx3)]">·</span>
                                 p. {citation.page ?? "?"}
                             </button>
                         ))}
@@ -107,7 +107,7 @@ export default function MessageCard({
                     <button
                         type="button"
                         onClick={copyMessage}
-                        className="mt-2 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] text-neutral-600 opacity-100 transition-colors hover:bg-neutral-900 hover:text-neutral-300 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+                        className="mt-2 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] text-[var(--tx3)] opacity-100 transition-colors hover:bg-[var(--sf2)] hover:text-[var(--tx)] sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
                         aria-label="Copy response"
                     >
                         {copied ? <Check size={12} /> : <Copy size={12} />}
