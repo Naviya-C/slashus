@@ -15,13 +15,19 @@ type ErrorPayload = {
 };
 
 export class ApiError extends Error {
+    readonly status: number;
+    readonly body?: unknown;
+
     constructor(
         message: string,
-        readonly status: number,
-        readonly body?: unknown,
+        status: number,
+        body?: unknown,
     ) {
         super(message);
+
         this.name = "ApiError";
+        this.status = status;
+        this.body = body;
     }
 }
 
