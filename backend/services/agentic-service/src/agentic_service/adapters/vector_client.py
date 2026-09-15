@@ -16,7 +16,7 @@ from agentic_service.config.settings import VectorSettings
 from agentic_service.domain.models import (
     SearchHit,
     SearchOutcome,
-    TitleInfo,
+    TitleInfo, 
     TitleListing,
 )
 from agentic_service.observability.metrics import VECTOR_ERRORS

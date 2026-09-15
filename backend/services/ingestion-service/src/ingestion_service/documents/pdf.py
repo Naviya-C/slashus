@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import io
+import io 
 import re
 from collections.abc import Iterator
 from pathlib import Path

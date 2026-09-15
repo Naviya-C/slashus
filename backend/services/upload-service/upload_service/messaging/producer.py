@@ -11,7 +11,7 @@ import json
 import logging
 import os
 
-from confluent_kafka import Producer
+from confluent_kafka import Producer 
 
 from contracts import DocUploaded
 

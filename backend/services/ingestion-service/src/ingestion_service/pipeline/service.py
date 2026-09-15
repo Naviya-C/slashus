@@ -14,7 +14,7 @@ from ingestion_service.domain import (
     DocumentIngestedEvent,
     DocumentUploadedEvent,
     ImageEnrichmentRequested,
-    stable_chunk_id,
+    stable_chunk_id, 
 )
 from ingestion_service.messaging.producer import EventPublisher
 from ingestion_service.observability.metrics import (
