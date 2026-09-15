@@ -266,7 +266,7 @@ services:
     environment:
       REDIS_URL: redis://redis:6379/0
       EMBEDDING_GRPC_URL: embedding-service:50051
-      AGENT_MAX_TOOL_CALLS: "10"
+      AGENT_MAX_TOOL_CALLS: "40"
       AGENT_RECURSION_LIMIT: "25"
       AGENT_TURN_TIMEOUT_SECONDS: "180"
     depends_on:
