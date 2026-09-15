@@ -12,9 +12,11 @@ export function sendChatMessage(
     message: string,
     sessionId: string | null,
     documentIds: string[],
+    signal?: AbortSignal,
 ) {
     return apiJson<ChatResponse>("/api/v1/chat", {
         method: "POST",
+        signal,
         body: JSON.stringify({
             message,
             session_id: sessionId,
@@ -41,8 +43,10 @@ export function markAnswer(answer: Answer) {
     }).then(normalizeQuestionResult);
 }
 
-export function getSession(sessionId: string) {
-    return apiJson<SessionResponse>(`/api/v1/sessions/${sessionId}?limit=30`);
+export function getSession(sessionId: string, signal?: AbortSignal) {
+    return apiJson<SessionResponse>(`/api/v1/sessions/${sessionId}?limit=30`, {
+        signal,
+    });
 }
 
 export function getPractice(practiceSetId: string) {

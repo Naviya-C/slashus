@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getSession, sendChatMessage } from "../features/chat/api";
 import { normalizeSessionMessages } from "../features/chat/normalizers";
@@ -23,9 +23,25 @@ export function useChat(documentIds: string[]) {
     const [loadingSession, setLoadingSession] = useState(false);
     const [chatError, setChatError] = useState<string | null>(null);
     const practice = usePractice();
+    const abortRef = useRef<AbortController | null>(null);
+
+    useEffect(() => () => abortRef.current?.abort(), []);
+
+    // Cancels whatever request is in flight. The cancelled request's finally
+    // block skips its flag reset (it's no longer current), so reset both here.
+    const abortPending = useCallback(() => {
+        abortRef.current?.abort();
+        abortRef.current = null;
+        setSending(false);
+        setLoadingSession(false);
+    }, []);
 
     const send = useCallback(
         async (text: string) => {
+            abortPending();
+            const controller = new AbortController();
+            abortRef.current = controller;
+
             const userMessage: Message = {
                 id: crypto.randomUUID(),
                 role: "user",
@@ -41,6 +57,7 @@ export function useChat(documentIds: string[]) {
                     text,
                     sessionId,
                     documentIds,
+                    controller.signal,
                 );
 
                 setSessionId(response.session_id);
@@ -61,17 +78,28 @@ export function useChat(documentIds: string[]) {
                     await practice.loadForSession(response.session_id);
                 }
             } catch (error) {
+                if (error instanceof DOMException && error.name === "AbortError") {
+                    return;
+                }
                 setMessages((current) =>
-                    current.filter((message) => message.id !== userMessage.id),
+                    current.map((message) =>
+                        message.id === userMessage.id
+                            ? { ...message, failed: true }
+                            : message,
+                    ),
                 );
                 setChatError(
                     error instanceof Error ? error.message : "Something went wrong",
                 );
             } finally {
-                setSending(false);
+                if (abortRef.current === controller) {
+                    abortRef.current = null;
+                    setSending(false);
+                }
             }
         },
         [
+            abortPending,
             documentIds,
             practice.loadById,
             practice.loadForSession,
@@ -81,6 +109,10 @@ export function useChat(documentIds: string[]) {
 
     const openSession = useCallback(
         async (id: string) => {
+            abortPending();
+            const controller = new AbortController();
+            abortRef.current = controller;
+
             setSessionId(id);
             setLoadingSession(true);
             setChatError(null);
@@ -88,10 +120,13 @@ export function useChat(documentIds: string[]) {
             practice.clear();
 
             try {
-                const session = await getSession(id);
+                const session = await getSession(id, controller.signal);
                 setMessages(normalizeSessionMessages(session.messages));
                 await practice.loadFromSession(session);
             } catch (error) {
+                if (error instanceof DOMException && error.name === "AbortError") {
+                    return;
+                }
                 setMessages([]);
                 practice.clear();
                 setChatError(
@@ -100,18 +135,22 @@ export function useChat(documentIds: string[]) {
                         : "Could not load this session",
                 );
             } finally {
-                setLoadingSession(false);
+                if (abortRef.current === controller) {
+                    abortRef.current = null;
+                    setLoadingSession(false);
+                }
             }
         },
-        [practice.clear, practice.loadFromSession],
+        [abortPending, practice.clear, practice.loadFromSession],
     );
 
     const newSession = useCallback(() => {
+        abortPending();
         setSessionId(null);
         setMessages([]);
         setChatError(null);
         practice.clear();
-    }, [practice.clear]);
+    }, [abortPending, practice.clear]);
 
     return {
         sessionId,
