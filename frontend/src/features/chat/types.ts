@@ -70,6 +70,7 @@ export type Message = {
     citations?: Citation[];
     reason?: Reason | null;
     practice_set_id?: string | null;
+    failed?: boolean;
 };
 
 export type Answer = {

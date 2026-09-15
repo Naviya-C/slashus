@@ -14,8 +14,8 @@ def _run(mode: str) -> None:
     configure_logging(settings.log_level)
     runtime = (
         build_vision_runtime(settings) if mode == "vision-worker" else build_ingestion_runtime(settings)
-    )
-    thread = runtime.start_worker()
+    ) 
+    thread = runtime.start_worker() 
     try:
         uvicorn.run(
             runtime.app,

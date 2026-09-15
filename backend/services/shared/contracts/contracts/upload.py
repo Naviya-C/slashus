@@ -31,7 +31,7 @@ class DocUploaded:
         return {
             "schema_version": self.schema_version,
             "doc_id": self.doc_id,
-            "user_id": self.user_id,
+            "user_id": self.user_id, 
             "source_name": self.source_name,
             "storage_key": self.storage_key,
             "content_type": self.content_type,

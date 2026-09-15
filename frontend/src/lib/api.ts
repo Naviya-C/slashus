@@ -2,6 +2,8 @@ import { getToken, setToken } from "./token";
 
 const BASE_URL = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 const AUTH_REFRESH_PATH = "/api/v1/auth/refresh";
+const SERVER_UNAVAILABLE_MESSAGE =
+    "The assistant is temporarily unavailable. Please try again.";
 
 type ApiRequestInit = RequestInit & {
     accessToken?: string | null;
@@ -116,11 +118,13 @@ export async function apiJson<T>(
     if (!response.ok) {
         const body = await readJson<ErrorPayload>(response);
         const message =
-            body?.error ??
-            body?.message ??
-            body?.detail ??
-            response.statusText ??
-            "Request failed";
+            body === undefined && response.status >= 500
+                ? SERVER_UNAVAILABLE_MESSAGE
+                : (body?.error ??
+                  body?.message ??
+                  body?.detail ??
+                  response.statusText ??
+                  "Request failed");
         throw new ApiError(message, response.status, body);
     }
 

@@ -11,6 +11,7 @@ import structlog
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from openai import BadRequestError, PermissionDeniedError
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field
 
@@ -144,12 +145,34 @@ def create_app(*, settings: Settings, container: Any, health: HealthRegistry) ->
 
             return StreamingResponse(events(), media_type="text/event-stream")
 
-        result = await container.runner.run(
-            message=body.message,
-            user_id=user_id,
-            session_id=session_id,
-            doc_ids=doc_ids,
-        )
+        try:
+            result = await container.runner.run(
+                message=body.message,
+                user_id=user_id,
+                session_id=session_id,
+                doc_ids=doc_ids,
+            )
+        # langchain_openai's OpenAIInvalidRequestError / OpenAIPermissionDeniedError
+        # subclass these, and they aren't exported from the package root.
+        except (BadRequestError, PermissionDeniedError) as exc:
+            log.warning(
+                "api.chat_model_rejected",
+                session_id=session_id,
+                error_type=type(exc).__name__,
+                status_code=getattr(exc, "status_code", None),
+            )
+            return {
+                "session_id": session_id,
+                "reply": (
+                    "Sorry, I couldn't process that request. Please try "
+                    "rephrasing your message."
+                ),
+                "tools_used": [],
+                "iterations": 0,
+                "timed_out": False,
+                "citations": [],
+                "practice_set_id": None,
+            }
 
         try:
             await container.repository.add_turn(

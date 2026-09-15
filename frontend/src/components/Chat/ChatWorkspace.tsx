@@ -104,6 +104,7 @@ export default function ChatWorkspace({
                                     content={message.content}
                                     citations={message.citations}
                                     reason={message.reason}
+                                    failed={message.failed}
                                 />
                             ))}
                             {sending && <ThinkingMessage />}

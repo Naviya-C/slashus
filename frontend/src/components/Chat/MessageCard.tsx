@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Copy, FileText, Sparkles } from "lucide-react";
+import { AlertCircle, Check, Copy, FileText, Sparkles } from "lucide-react";
 
 import type { Reason } from "../../features/chat/types";
 import { useAuth } from "../../context/AuthContext";
@@ -14,6 +14,7 @@ type Props = {
     content: string;
     citations?: Citation[];
     reason?: Reason | null;
+    failed?: boolean;
 };
 
 export default function MessageCard({
@@ -21,10 +22,12 @@ export default function MessageCard({
     content,
     citations,
     reason,
+    failed,
 }: Props) {
     const { user } = useAuth();
     const [copied, setCopied] = useState(false);
     const isUser = role === "user";
+    const sendFailed = isUser && Boolean(failed);
     const blocked = !isUser && Boolean(reason);
     const initial = (user?.firstName?.[0] ?? "Y").toUpperCase();
 
@@ -46,7 +49,9 @@ export default function MessageCard({
         (isUser ? "max-w-[86%] sm:max-w-[72%]" : "max-w-[92%] sm:max-w-[82%]");
     const bubbleClass =
         "relative rounded-2xl px-4 py-3.5 text-[15px] leading-7 shadow-sm sm:px-5 sm:py-4 " +
-        (isUser
+        (sendFailed
+            ? "rounded-tr-md border border-red-500/30 bg-red-500/5 text-[var(--tx3)]"
+            : isUser
             ? "rounded-tr-md bg-blue-600 text-white shadow-blue-950/20"
             : blocked
               ? "rounded-tl-md border border-amber-500/20 bg-amber-500/5 text-[var(--tx2)]"
@@ -78,6 +83,16 @@ export default function MessageCard({
                 <div className={bubbleClass}>
                     <p className="whitespace-pre-wrap break-words">{content}</p>
                 </div>
+
+                {sendFailed && (
+                    <p
+                        role="status"
+                        className="mt-2 flex items-center justify-end gap-1.5 text-[11px] text-red-400"
+                    >
+                        <AlertCircle size={12} aria-hidden="true" />
+                        Not sent
+                    </p>
+                )}
 
                 {!isUser && citations && citations.length > 0 && (
                     <div className="mt-3 flex flex-wrap gap-2">
