@@ -48,9 +48,24 @@ def normalize_questions(raw: list[dict], qtype: str) -> list[dict]:
     return out
 
 
+def _option_text(option: Any) -> tuple[str, bool]:
+    """Options arrive as bare strings or as {text, is_correct} dicts."""
+    if isinstance(option, dict):
+        return str(option.get("text") or "").strip(), option.get("is_correct") is True
+    return str(option).strip(), False
+
+
 def _build_choice(item: dict, q: dict) -> dict | None:
-    options = [str(o).strip() for o in q.get("options", []) if str(o).strip()]
-    
+    options: list[str] = []
+    flagged: list[int] = []
+    for raw in q.get("options", []):
+        text, is_correct = _option_text(raw)
+        if not text:
+            continue
+        if is_correct:
+            flagged.append(len(options))
+        options.append(text)
+
     if len(options) < 2:
         log.warning("dropping MCQ with %d options", len(options))
         return None
@@ -59,6 +74,8 @@ def _build_choice(item: dict, q: dict) -> dict | None:
         idx = int(q.get("correct_index", -1))
     except (TypeError, ValueError):
         idx = -1
+    if not 0 <= idx < len(options) and len(flagged) == 1:
+        idx = flagged[0]
     if not 0 <= idx < len(options):
         log.warning("dropping MCQ with out-of-range correct_index %r", q.get("correct_index"))
         return None
