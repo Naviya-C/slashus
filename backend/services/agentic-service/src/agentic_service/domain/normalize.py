@@ -91,15 +91,25 @@ def _build_written(item: dict, q: dict) -> dict | None:
 
     rubric = []
     for r in q.get("rubric", []):
-        point = str(r.get("point", "")).strip()
-        if not point:
+        # Rubric entries arrive as bare strings or as {point, marks} dicts.
+        if isinstance(r, str):
+            point, marks = r.strip(), 0.0
+        elif isinstance(r, dict):
+            point = str(r.get("point", "")).strip()
+            try:
+                marks = float(r.get("marks", 0))
+            except (TypeError, ValueError):
+                continue
+        else:
             continue
-        try:
-            marks = float(r.get("marks", 0))
-        except (TypeError, ValueError):
+        if not point:
             continue
         rubric.append({"point": point, "marks": marks})
 
+    if rubric and all(r["marks"] == 0 for r in rubric):
+        share = round(TOTAL_MARKS / len(rubric), 1)
+        for r in rubric:
+            r["marks"] = share
 
     if not rubric:
         log.warning("dropping written question with no rubric")
