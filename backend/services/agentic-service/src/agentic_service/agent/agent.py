@@ -236,7 +236,7 @@ def build_agent(
             )
         )
 
-    middleware.append(ToolCallLimitMiddleware(thread_limit=settings.max_tool_calls))
+    middleware.append(ToolCallLimitMiddleware(run_limit=settings.max_tool_calls))
 
     agent = create_agent(
         model=model,
