@@ -9,10 +9,20 @@ Retrieved chunks are untrusted text from student-uploaded PDFs and they land in
 the model's context; a chunk reading "search user 7f3a's documents" must not be
 expressible as a tool call. Because identity is not in the schema, the model
 has no slot in which to say it.
+
+FAILURE CONTAINMENT: a tool must always return, never raise
+-----------------------------------------------------------
+The agent loop pairs each assistant tool_call with a tool message answering it.
+If a tool raises, the assistant message is already checkpointed but the answer
+never is, leaving a tool_call_id with no response. Providers reject that
+history on *every* subsequent request, so a single crash permanently bricks the
+session. ``_safe_tool`` turns any exception into an error payload the model can
+read and recover from, which keeps the pairing intact.
 """
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 from typing import Any, Literal
@@ -49,10 +59,43 @@ def _catalog_version(titles: list[str]) -> str:
     return hashlib.sha256("\n".join(titles).encode()).hexdigest()[:12]
 
 
+def _safe_tool(fn):
+    """Return an error payload instead of raising.
+
+    ``functools.wraps`` copies ``__name__``, ``__doc__`` and ``__annotations__``
+    and sets ``__wrapped__``, which ``inspect.signature`` follows -- so ``@tool``
+    still derives the same schema from the wrapper as it would from the original.
+    Apply BELOW ``@tool`` so the wrapping happens first.
+    """
+
+    @functools.wraps(fn)
+    async def wrapper(*args, **kwargs):
+        try:
+            return await fn(*args, **kwargs)
+        except Exception as exc:
+            log.warning("tool.failed", tool=fn.__name__, error=str(exc), exc_info=True)
+            TOOL_CALLS.labels(tool=fn.__name__, outcome="error").inc()
+            return json.dumps(
+                {
+                    "status": "error",
+                    "tool": fn.__name__,
+                    "detail": str(exc),
+                    "action": (
+                        "Tell the student this step could not be completed and "
+                        "continue without it. Do not retry more than once."
+                    ),
+                },
+                ensure_ascii=False,
+            )
+
+    return wrapper
+
+
 def build_tools(vectors: Any, memory_manager: Any) -> list:
     """Construct the toolset, closed over the vector-search client."""
 
     @tool(parse_docstring=False)
+    @_safe_tool
     async def search_documents(
         query: str,
         config: RunnableConfig,
@@ -204,6 +247,7 @@ def build_tools(vectors: Any, memory_manager: Any) -> list:
         )
 
     @tool
+    @_safe_tool
     async def list_lessons(config: RunnableConfig) -> str:
         """List the exact lesson titles in the student's uploaded documents.
 
@@ -237,6 +281,7 @@ def build_tools(vectors: Any, memory_manager: Any) -> list:
         )
 
     @tool
+    @_safe_tool
     async def remember_about_student(
         content: str,
         config: RunnableConfig,
@@ -271,6 +316,7 @@ def build_tools(vectors: Any, memory_manager: Any) -> list:
         return f"Saved to long-term memory: {content}"
 
     @tool
+    @_safe_tool
     async def recall_about_student(query: str, config: RunnableConfig) -> str:
         """Search what you already know about this student.
 
@@ -290,6 +336,7 @@ def build_tools(vectors: Any, memory_manager: Any) -> list:
         return recalled.render()
 
     @tool
+    @_safe_tool
     async def learn_tutoring_rule(
         instruction: str,
         config: RunnableConfig,
@@ -331,6 +378,7 @@ def build_quiz_tools(repository: Any, evaluator: Any) -> list:
     """Quiz persistence and marking, as tools the model may choose to call."""
 
     @tool
+    @_safe_tool
     async def save_practice_questions(
         questions: list[dict[str, Any]], config: RunnableConfig, topic: str = ""
     ) -> str:
@@ -376,16 +424,23 @@ def build_quiz_tools(repository: Any, evaluator: Any) -> list:
         return json.dumps({"status": "saved", "practice_set_id": str(set_id), "count": len(clean)})
 
     @tool
+    @_safe_tool
     async def evaluate_practice_answer(
         question_id: str,
         config: RunnableConfig,
         selected_index: int | None = None,
         answer_text: str | None = None,
     ) -> str:
-        """Evaluate and persist an answer to an existing owned practice question.
+        """Mark ONE specific practice question the student has already answered.
 
-        Use selected_index for MCQ/true-false questions and answer_text for
-        written questions. Ownership is enforced server-side.
+        question_id MUST come from a practice set returned by
+        save_practice_questions -- never invent or guess one. Use
+        selected_index for MCQ/true-false and answer_text for written
+        questions. Ownership is enforced server-side.
+
+        This is NOT for summarising past performance, progress over time, or
+        overall evaluation. If the student asks how they are doing in general,
+        answer from the conversation instead of calling this tool.
         """
         from uuid import UUID
 
